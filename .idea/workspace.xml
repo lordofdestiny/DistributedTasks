@@ -4,12 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="5869ac1e-3f7f-45f3-98d0-199e35115e0c" name="Changes" comment="Implementation of Linda for single process using threads with test class">
-      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/Linda.java" afterDir="false" />
+    <list default="true" id="5869ac1e-3f7f-45f3-98d0-199e35115e0c" name="Changes" comment="Implemented ReadWriteList">
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/linda/CentralizedLinda.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/linda/LocalLinda.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/package-info.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/tests/TestLinda.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/tuple/AwaitableTuple.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/utils/ClassMethodInvoker.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/utils/ReadWriteList.java" afterDir="false" />
@@ -49,25 +45,26 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ASKED_ADD_EXTERNAL_FILES&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
-    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;project.structure.last.edited&quot;: &quot;Project&quot;,
-    &quot;project.structure.proportion&quot;: &quot;0.15&quot;,
-    &quot;project.structure.side.proportion&quot;: &quot;0.2&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;reference.settings.ide.settings.new.ui&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ASKED_ADD_EXTERNAL_FILES": "true",
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "WebServerToolWindowFactoryState": "false",
+    "create.test.in.the.same.root": "true",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "project.structure.last.edited": "Project",
+    "project.structure.proportion": "0.15",
+    "project.structure.side.proportion": "0.2",
+    "settings.editor.selected.configurable": "reference.settings.ide.settings.new.ui",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RunAnythingCache">
     <myKeys>
       <visibility group="Gradle Tasks" flag="true" />
@@ -93,7 +90,7 @@
       <workItem from="1674866449295" duration="37092000" />
       <workItem from="1674986360785" duration="70000" />
       <workItem from="1674986475071" duration="1294000" />
-      <workItem from="1675007589493" duration="17893000" />
+      <workItem from="1675007589493" duration="18814000" />
     </task>
     <task id="LOCAL-00001" summary="Implemented Serializable tuple utility">
       <created>1675025533162</created>
@@ -109,7 +106,21 @@
       <option name="project" value="LOCAL" />
       <updated>1675025609813</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Implementation of Linda for single process using threads with test class">
+      <created>1675025798888</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1675025798888</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Implementation of Linda for single process using threads with test class">
+      <created>1675025838763</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1675025838763</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -131,7 +142,8 @@
     <MESSAGE value="Implemented Serializable tuple utility" />
     <MESSAGE value="Auto created .idea files" />
     <MESSAGE value="Implementation of Linda for single process using threads with test class" />
-    <option name="LAST_COMMIT_MESSAGE" value="Implementation of Linda for single process using threads with test class" />
+    <MESSAGE value="Implemented ReadWriteList" />
+    <option name="LAST_COMMIT_MESSAGE" value="Implemented ReadWriteList" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
