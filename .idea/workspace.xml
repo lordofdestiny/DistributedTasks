@@ -4,19 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="5869ac1e-3f7f-45f3-98d0-199e35115e0c" name="Changes" comment="Implemented Serializable tuple utility">
-      <change afterPath="$PROJECT_DIR$/.idea/uiDesigner.xml" afterDir="false" />
+    <list default="true" id="5869ac1e-3f7f-45f3-98d0-199e35115e0c" name="Changes" comment="Implementation of Linda for single process using threads with test class">
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/Linda.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/linda/CentralizedLinda.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/linda/LocalLinda.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/linda/TestLinda.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/package-info.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/tests/TestLinda.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/tuple/AwaitableTuple.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/tuple/FieldParser.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/tuple/Tuple.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/tuple/TupleFormatException.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/utils/ClassMethodInvoker.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/rs/ac/bg/etf/kdp/utils/ReadWriteList.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -29,6 +25,7 @@
       <list>
         <option value="Interface" />
         <option value="Class" />
+        <option value="package-info" />
       </list>
     </option>
   </component>
@@ -96,8 +93,23 @@
       <workItem from="1674866449295" duration="37092000" />
       <workItem from="1674986360785" duration="70000" />
       <workItem from="1674986475071" duration="1294000" />
-      <workItem from="1675007589493" duration="17648000" />
+      <workItem from="1675007589493" duration="17893000" />
     </task>
+    <task id="LOCAL-00001" summary="Implemented Serializable tuple utility">
+      <created>1675025533162</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1675025533174</updated>
+    </task>
+    <task id="LOCAL-00002" summary="Auto created .idea files">
+      <created>1675025609813</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1675025609813</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -117,7 +129,9 @@
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
     <MESSAGE value="Implemented Serializable tuple utility" />
-    <option name="LAST_COMMIT_MESSAGE" value="Implemented Serializable tuple utility" />
+    <MESSAGE value="Auto created .idea files" />
+    <MESSAGE value="Implementation of Linda for single process using threads with test class" />
+    <option name="LAST_COMMIT_MESSAGE" value="Implementation of Linda for single process using threads with test class" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
