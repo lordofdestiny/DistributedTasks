@@ -64,7 +64,7 @@ public class TestLinda {
         int sqsAcc = 0;
         int fiboAcc = 0;
         for (int i = 0; i < iterations; i++) {
-            final var fmt = new String[]{"result", null, null, null};
+            final var fmt = new String[]{"result",String.valueOf(i), null, null};
             ll.rd(fmt);
             sqsAcc += Integer.parseInt(fmt[2]);
             fiboAcc += Integer.parseInt(fmt[3]);

@@ -1,6 +1,5 @@
 package rs.ac.bg.etf.kdp.linda;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.locks.*;
 
@@ -16,52 +15,35 @@ public class CentralizedLinda implements Linda {
     private final List<Tuple> tupleSpace = new ReadWriteList<>();
     private final List<AwaitableTuple> readConditions = new ReadWriteList<>();
     private final List<AwaitableTuple> takeConditions = new ReadWriteList<>();
+    private final Random rand = new Random();
 
     @Override
     public void out(String[] tuple) {
-        final var data = Tuple.valueOf(tuple);
+        final var data = new Tuple(tuple);
         lock.lock();
-        try {
+        try{
             tupleSpace.add(0, data);
-            for (final var at : readConditions) {
-                try {
-                    if (data.matches(at)) {
-                        at.setValue(data.deepCopy());
-                    }
-                } catch (IOException ignored) {
-                }
-            }
+            readConditions.parallelStream()
+                    .filter(data::matches)
+                    .forEach(at -> at.setValue(data));
 
-            // Race condition here!!!
             takeConditions.parallelStream()
-                    .filter(data::matches).findFirst()
+                    .filter(data::matches)
+                    .findAny()
                     .ifPresent(at -> at.setValue(data));
-        } finally {
+        }finally {
             lock.unlock();
         }
     }
 
     @Override
     public void in(String[] tuple) {
-        final var template = Tuple.valueOf(tuple);
+        final var template = new Tuple(tuple);
         lock.lock();
         try {
-            final var result = tupleSpace.parallelStream()
-                    .filter(t -> t.matches(template))
-                    .findAny();
-            if (result.isPresent()) {
-                tupleSpace.remove(result.get());
-                fill(tuple, result.get().toStringArray());
-                return;
-            }
-            final var at = new AwaitableTuple(template, lock);
-            final var pos = Math.random() * takeConditions.size();
-            takeConditions.add((int) pos, at);
-            at.await();
-            final var value = at.getValue();
-            tupleSpace.remove(at);
-            takeConditions.remove(at);
-            fill(tuple, value.toStringArray());
+            final var result = getOrWaitOn(template, takeConditions);
+            tupleSpace.remove(result);
+            fill(tuple, result.toStringArray());
         } finally {
             lock.unlock();
         }
@@ -69,34 +51,24 @@ public class CentralizedLinda implements Linda {
 
     @Override
     public boolean inp(String[] tuple) {
-        final var template = Tuple.valueOf(tuple);
+        final var template = new Tuple(tuple);
         final var data = tupleSpace.parallelStream()
                 .filter(t -> t.matches(template))
                 .findAny();
-        if (data.isEmpty()) return false;
-        tupleSpace.remove(data.get());
-        fill(tuple, data.get().toStringArray());
-        return true;
+        if (data.isPresent() && tupleSpace.remove(data.get())) {
+            fill(tuple, data.get().toStringArray());
+            return true;
+        }
+        return false;
     }
 
     @Override
     public void rd(String[] tuple) {
-        final var template = Tuple.valueOf(tuple);
+        final var template = new Tuple(tuple);
         lock.lock();
         try {
-            final var result = tupleSpace.parallelStream()
-                    .filter(template::matches)
-                    .findAny();
-            if (result.isPresent()) {
-                fill(tuple, result.get().toStringArray());
-                return;
-            }
-            final var at = new AwaitableTuple(template, lock);
-            final var pos = Math.random() * readConditions.size();
-            readConditions.add((int) pos, at);
-            at.await();
-            fill(tuple, at.getValue().toStringArray());
-            readConditions.remove(at);
+            final var result = getOrWaitOn(template, readConditions);
+            fill(tuple, result.toStringArray());
         } finally {
             lock.unlock();
         }
@@ -104,13 +76,26 @@ public class CentralizedLinda implements Linda {
 
     @Override
     public boolean rdp(String[] tuple) {
-        final var template = Tuple.valueOf(tuple);
+        final var template = new Tuple(tuple);
         final var data = tupleSpace.parallelStream()
                 .filter(t -> t.matches(template))
                 .findAny();
         if (data.isEmpty()) return false;
-        fill(tuple, template.toStringArray());
+        fill(tuple, data.get().toStringArray());
         return true;
+    }
+
+    private Tuple getOrWaitOn(Tuple template, List<AwaitableTuple> list){
+        return tupleSpace.parallelStream()
+                .filter(tup->tup.matches(template)).findAny()
+                .orElseGet(()->{
+                    final var at = new AwaitableTuple(template, lock);
+                    final var pos = rand.nextInt(list.size() + 1);
+                    list.add(pos, at);
+                    at.await();
+                    list.remove(at);
+                    return at.getValue();
+                });
     }
 
     @Override

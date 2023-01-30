@@ -5,7 +5,7 @@ import java.util.*;
 import java.util.stream.IntStream;
 
 public class Tuple implements Serializable {
-
+    final static long serialVersionUID = 0L;
     protected final ArrayList<Serializable> fields;
 
     /**
@@ -14,9 +14,6 @@ public class Tuple implements Serializable {
      * are considered template tuples and can be used
      * for matching
      */
-    public Tuple(Serializable... elements) {
-        this(new ArrayList<>(Arrays.asList(elements)));
-    }
 
     protected Tuple(ArrayList<Serializable> fields) {
         this.fields = fields;
@@ -28,16 +25,15 @@ public class Tuple implements Serializable {
      * and question marks are to be followed by the value of
      * Class.getName()
      */
-    public static Tuple valueOf(String[] fields) throws TupleFormatException {
-        final var arr = new ArrayList<Serializable>(fields.length);
-        for (int i = 0; i < fields.length; i++) {
-            final var value = FieldParser.parse(fields[i]);
+    public Tuple(String[] tuple) {
+        fields = new ArrayList<>(tuple.length);
+        for (final var field : tuple) {
+            final var value = FieldParser.parse(field);
             if (value.isEmpty()) {
                 throw new TupleFormatException("Invalid field format!");
             }
-            arr.add(i,value.get());
+            fields.add(value.get());
         }
-        return new Tuple(arr);
     }
 
     public String[] toStringArray() {
@@ -69,37 +65,7 @@ public class Tuple implements Serializable {
         return sb.append(")").toString();
     }
 
-    public static Tuple valueOf(String s) {
-        final var st = new StringTokenizer(s, " ,");
-        if (!st.hasMoreTokens() || !st.nextToken().equals("(")) {
-            throw new TupleFormatException("Missing initial parenthesis");
-        }
-        Tuple result = valueOf(st);
-        if (st.hasMoreTokens()) {
-            throw new TupleFormatException("Excess characters after ')'");
-        }
-        return result;
-    }
-
-    private static Tuple valueOf(StringTokenizer st) {
-        final var fields = new ArrayList<Serializable>();
-        while (st.hasMoreTokens()) {
-            final var token = st.nextToken().strip();
-            if (token.equals(")")) return new Tuple(fields);
-            if (Objects.equals(token, "(")) {
-                fields.add(valueOf(st));
-            }
-            FieldParser.parse(token)
-                    .ifPresentOrElse(fields::add,
-                            () -> fields.add(token));
-        }
-        throw new TupleFormatException("Missing closing ')'");
-    }
-
-    public Serializable get(int i) throws IndexOutOfBoundsException {
-        if (i < 0 || i > size()) {
-            throw new IndexOutOfBoundsException();
-        }
+    public Serializable get(int i) {
         return fields.get(i);
     }
 
@@ -129,45 +95,5 @@ public class Tuple implements Serializable {
             return ((Class<?>) templateField).isInstance(valueField);
         }
         return valueField.equals(templateField);
-    }
-
-    public Tuple deepCopy() throws IOException{
-        ObjectOutputStream oos = null;
-        ObjectInputStream ois = null;
-        try {
-            var bos = new ByteArrayOutputStream();
-            oos = new ObjectOutputStream(bos);
-            oos.writeObject(this);
-            oos.flush();
-            var bin = new ByteArrayInputStream(bos.toByteArray());
-            ois = new ObjectInputStream(bin);
-            return (Tuple) ois.readObject();
-        } catch (ClassNotFoundException e) {
-            return null;
-        } finally {
-            if (oos != null) oos.close();
-            if (ois != null) ois.close();
-        }
-    }
-
-
-    public static void main(String[] args) {
-        var t1 = new Tuple( "hi", true, 78, Boolean.class);
-        t1 = Tuple.valueOf(t1.toString());
-        var t2 = Tuple.valueOf("( \"hi\" true null ?java.lang.Boolean )");
-        var t3 = Tuple.valueOf(new String[]{"\"hi\"", "true", "78", "?Boolean"});
-
-        System.out.println(t1);
-        System.out.println(t2);
-        System.out.println(t3);
-
-        Tuple t4 = null;
-        try{
-            t4 = t1.deepCopy();
-        }catch (IOException e){
-            e.printStackTrace();
-        }
-        System.out.println(t4);
-        System.out.println(Tuple.valueOf("( \"hi\", true, 78, false )").matches(t1));
     }
 }
