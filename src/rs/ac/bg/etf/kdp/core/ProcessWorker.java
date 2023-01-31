@@ -10,6 +10,7 @@ import java.rmi.server.*;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class ProcessWorker implements IRMIProcessWorker {
     static {
@@ -82,42 +83,37 @@ public class ProcessWorker implements IRMIProcessWorker {
         }
     }
 
-    private int reconnectToServer() {
-        if (System.currentTimeMillis() - lastServerOnlineTimestamp > 60 * 1000) {
-            System.err.println("Could not reconnect to server! Exiting...");
-            System.exit(0);
-            return -1;
+    private void reconnectToServer() {
+        long time = 0;
+        while ((time = System.currentTimeMillis()) - lastServerOnlineTimestamp < 60 * 1000){
+            System.out.println("Reconnecting...");
+            final var ping = pingServer();
+            if (ping.isPresent()) {
+                System.out.printf("Reconnected to server, ping is %d ms\n", ping.get());
+                return;
+            }
         }
-        System.out.println("Reconnecting...");
-        final var ping = pingServer();
-        if (ping.isPresent()) {
-            System.out.printf("Reconnected to server is %d ms\n", ping.get());
-            return 0;
-        }
-        return 1;
+        System.err.println("Could not reconnect to server! Exiting...");
+        System.exit(0);
     }
 
     private void connectionTracker() {
-        final var ping = pingServer();
-        if (ping.isPresent()) {
-            System.out.printf("Ping to server is %d ms\n", ping.get());
-            lastServerOnlineTimestamp = System.currentTimeMillis();
-        } else {
+        while (true) {
+            final var ping = pingServer();
+            if (ping.isPresent()) {
+                System.out.printf("Ping to server is %d ms\n", ping.get());
+                lastServerOnlineTimestamp = System.currentTimeMillis();
+                try {
+                    //noinspection BusyWait
+                    Thread.sleep(SERVER_PING_INTERVAL);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                continue;
+            }
             System.err.println("Lost connection to server!");
             connected = false;
-            new Thread(()->{
-                while(true) {
-                    final int status = reconnectToServer();
-                    if(status <= 0) break;
-                    reconnectToServer();
-                    try {
-                        //noinspection BusyWait
-                        Thread.sleep(SERVER_PING_INTERVAL);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            }).start();
+            reconnectToServer();
         }
     }
 

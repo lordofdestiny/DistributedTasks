@@ -6,6 +6,8 @@ import java.rmi.RemoteException;
 import java.rmi.registry.*;
 import java.rmi.server.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 public class CentralServer extends UnicastRemoteObject implements IRMICentralServer {
     static {
@@ -65,8 +67,8 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
         }
     }
 
-    private final Map<UUID, WorkerRecord> registeredWorkers = new HashMap<>();
-    private final Set<UUID> onlineWorkers = new HashSet<>();
+    private final Map<UUID, WorkerRecord> registeredWorkers = new ConcurrentHashMap<>();
+    private final Set<UUID> onlineWorkers = new ConcurrentSkipListSet<>();
 
     @Override
     public void registerWorker(UUID id, IRMIProcessWorker worker) throws RemoteException {
@@ -98,30 +100,12 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
         new Thread(() -> {
             while (true) {
                 // Possibly replace with thread pool that talks to a queue
-                final var threads = new HashMap<UUID, Thread>(cs.onlineWorkers.size());
-                for (final var worker : cs.registeredWorkers.values()) {
-                    final var wid = worker.id;
-                    final var finalCs = cs;
-                    final var thread = new Thread(() -> {
-                        final var lastOnline = worker.isOnline();
-                        final var ping = worker.ping();
-                        if (ping.isPresent()) {
-                            System.out.printf(lastOnline
-                                            ? "Ping to %s is %d ms\n"
-                                            : "Worker %s is online again! Ping %d ms\n",
-                                    wid, ping.get());
-                        } else {
-                            finalCs.onlineWorkers.remove(wid);
-                            if (worker.isOnline()) {
-                                System.err.printf("Worker %s failed and is offline!\n", wid);
-                            }
-                            worker.setOffline();
-                        }
-                    });
-                    threads.put(wid, thread);
-                    thread.start();
-                }
-                for (final var thead : threads.values()) {
+                final var threads = cs.registeredWorkers.values().stream()
+                        .map((worker) ->(Runnable) () -> {
+
+                                }
+                        ).map(Thread::new).toArray(Thread[]::new);
+                for (final var thead : threads) {
                     try {
                         thead.join();
                     } catch (InterruptedException e) {
@@ -136,5 +120,23 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
                 }
             }
         }).start();
+    }
+
+    private void workerMonitor(WorkerRecord worker) {
+        final var wid = worker.id;
+        final var lastOnline = worker.isOnline();
+        final var ping = worker.ping();
+        if (ping.isPresent()) {
+            System.out.printf(lastOnline
+                            ? "Ping to %s is %d ms\n"
+                            : "Worker %s is online again! Ping %d ms\n",
+                    wid, ping.get());
+        } else {
+            onlineWorkers.remove(wid);
+            if (worker.isOnline()) {
+                System.err.printf("Worker %s failed and is offline!\n", wid);
+            }
+            worker.setOffline();
+        }
     }
 }
