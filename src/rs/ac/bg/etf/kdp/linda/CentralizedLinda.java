@@ -21,7 +21,7 @@ public class CentralizedLinda implements Linda {
     public void out(String[] tuple) {
         final var data = new Tuple(tuple);
         lock.lock();
-        try{
+        try {
             tupleSpace.add(0, data);
             readConditions.parallelStream()
                     .filter(data::matches)
@@ -31,7 +31,7 @@ public class CentralizedLinda implements Linda {
                     .filter(data::matches)
                     .findAny()
                     .ifPresent(at -> at.setValue(data));
-        }finally {
+        } finally {
             lock.unlock();
         }
     }
@@ -85,10 +85,10 @@ public class CentralizedLinda implements Linda {
         return true;
     }
 
-    private Tuple getOrWaitOn(Tuple template, List<AwaitableTuple> list){
+    private Tuple getOrWaitOn(Tuple template, List<AwaitableTuple> list) {
         return tupleSpace.parallelStream()
-                .filter(tup->tup.matches(template)).findAny()
-                .orElseGet(()->{
+                .filter(tup -> tup.matches(template)).findAny()
+                .orElseGet(() -> {
                     final var at = new AwaitableTuple(template, lock);
                     final var pos = rand.nextInt(list.size() + 1);
                     list.add(pos, at);
