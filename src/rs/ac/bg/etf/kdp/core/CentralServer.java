@@ -55,31 +55,38 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
         } catch (RemoteException e) {
             throw new RuntimeException(e);
         }
-        //noinspection InfiniteLoopStatement
-        while (true) {
-            // Possibly replace with thread pool that talks to a queue
-            final var threads = new HashMap<UUID, Thread>(cs.onlineWorkers.size());
-            for (final var wid : cs.onlineWorkers) {
-                final var worker = cs.registeredWorkers.get(wid).worker;
-                final var finalCs = cs;
-                final var thread = new Thread(() -> {
+        new Thread(()->{
+            while (true) {
+                // Possibly replace with thread pool that talks to a queue
+                final var threads = new HashMap<UUID, Thread>(cs.onlineWorkers.size());
+                for (final var wid : cs.onlineWorkers) {
+                    final var worker = cs.registeredWorkers.get(wid).worker;
+                    final var finalCs = cs;
+                    final var thread = new Thread(() -> {
+                        try {
+                            worker.ping();
+                        } catch (RemoteException e) {
+                            finalCs.onlineWorkers.remove(wid);
+                            System.out.printf("Worker %s failed and is offline: %n", wid);
+                        }
+                    });
+                    threads.put(wid, thread);
+                    thread.start();
+                }
+                for (final var entry : threads.entrySet()) {
                     try {
-                        worker.ping();
-                    } catch (RemoteException e) {
-                        finalCs.onlineWorkers.remove(wid);
-                        System.out.printf("Worker %s failed and is offline: %n", wid);
+                        entry.getValue().join();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
                     }
-                });
-                threads.put(wid, thread);
-                thread.start();
-            }
-            for (final var entry : threads.entrySet()) {
+                }
                 try {
-                    entry.getValue().join();
+                    //noinspection BusyWait
+                    Thread.sleep(3000);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
             }
-        }
+        }).start();
     }
 }

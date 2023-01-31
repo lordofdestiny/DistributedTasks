@@ -15,14 +15,14 @@ public class ProcessWorker implements IRMIProcessWorker {
 
     @Override
     public void ping() {
-        System.out.printf("Ping from server at %s", dateFormat.format(new Date()));
+        System.out.printf("Ping from server at %s!\n", dateFormat.format(new Date()));
     }
 
     private void connect(String host, int port) {
         try {
             UnicastRemoteObject.exportObject(this, 0);
             Registry registry = LocateRegistry.getRegistry(host, port);
-            server = (IRMICentralServer) registry.lookup("/LindaServer");
+            server = (IRMICentralServer) registry.lookup("/CentralServer");
             server.registerWorker(UUID.randomUUID(), this);
 
         } catch (RemoteException | NotBoundException e) {
