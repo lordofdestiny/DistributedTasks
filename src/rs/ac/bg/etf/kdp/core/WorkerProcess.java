@@ -9,7 +9,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-public class ProcessWorker implements IRMIProcessWorker {
+public class WorkerProcess implements IRMIWorkerProcess {
     static {
         try {
             PropertyLoader.loadConfiguration();
@@ -25,11 +25,11 @@ public class ProcessWorker implements IRMIProcessWorker {
     private final UUID uuid = UUID.randomUUID();
     private final String host;
     private final int port;
-    private IRMICentralServer server = null;
+    private IRMIServerProcess server = null;
     private Long lastOnlineTime;
     private boolean connected = false;
 
-    public ProcessWorker(String host, int port) {
+    public WorkerProcess(String host, int port) {
         this.host = host;
         this.port = port;
 
@@ -53,7 +53,7 @@ public class ProcessWorker implements IRMIProcessWorker {
             final var that = this;
             UnicastRemoteObject.exportObject(this, 0);
             Registry registry = LocateRegistry.getRegistry(host, port);
-            server = (IRMICentralServer) registry.lookup(SERVER_ROUTE);
+            server = (IRMIServerProcess) registry.lookup(SERVER_ROUTE);
             server.registerWorker(uuid, this);
             lastOnlineTime = System.currentTimeMillis();
             final var connectionTracker = new Thread(this::connectionTracker);
@@ -120,7 +120,7 @@ public class ProcessWorker implements IRMIProcessWorker {
     }
 
     public static void main(String[] args) {
-        ProcessWorker pw = new ProcessWorker("localhost", 8080);
+        WorkerProcess pw = new WorkerProcess("localhost", 8080);
         final var connected = pw.connectToServer();
         if (!connected) {
             System.err.println("Failed to connect to server!");

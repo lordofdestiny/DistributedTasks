@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 
-public class CentralServer extends UnicastRemoteObject implements IRMICentralServer {
+public class ServerProcess extends UnicastRemoteObject implements IRMIServerProcess {
     static {
         try {
             PropertyLoader.loadConfiguration();
@@ -20,10 +20,10 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
 
     private static class WorkerRecord {
         public UUID id;
-        public IRMIProcessWorker handle;
+        public IRMIWorkerProcess handle;
         private boolean online;
 
-        WorkerRecord(UUID id, IRMIProcessWorker worker) {
+        WorkerRecord(UUID id, IRMIWorkerProcess worker) {
             this.id = id;
             this.handle = worker;
             this.online = true;
@@ -59,13 +59,13 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
     private static final int SERVER_PORT = Integer.parseInt(System.getProperty("server.port"));
     private static final int SERVER_PING_INTERVAL = Integer.parseInt(System.getProperty("server.pingInterval"));
 
-    public CentralServer() throws RemoteException {
+    public ServerProcess() throws RemoteException {
         super();
         try {
             final var registry = LocateRegistry.createRegistry(SERVER_PORT);
             registry.rebind(SERVER_ROUTE, this);
             System.out.printf("Server started on port %s", SERVER_PORT);
-            CentralServer.setLog(System.out);
+            ServerProcess.setLog(System.out);
         } catch (RemoteException e) {
             System.err.println("Failed to start central server!");
             System.err.println(e.getMessage());
@@ -74,7 +74,7 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
     }
 
     @Override
-    public void registerWorker(UUID id, IRMIProcessWorker worker) throws RemoteException {
+    public void registerWorker(UUID id, IRMIWorkerProcess worker) throws RemoteException {
         final var record = new WorkerRecord(id, worker);
         registeredWorkers.put(id, record);
         try {
@@ -93,9 +93,9 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
     }
 
     public static void main(String[] args) {
-        CentralServer cs;
+        ServerProcess cs;
         try {
-            cs = new CentralServer();
+            cs = new ServerProcess();
         } catch (RemoteException e) {
             throw new RuntimeException(e);
         }

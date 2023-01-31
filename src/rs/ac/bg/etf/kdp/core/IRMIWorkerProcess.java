@@ -3,6 +3,6 @@ package rs.ac.bg.etf.kdp.core;
 import java.rmi.Remote;
 import java.rmi.RemoteException;
 
-public interface IRMIProcessWorker extends Remote {
+public interface IRMIWorkerProcess extends Remote {
     void ping() throws RemoteException;
 }
