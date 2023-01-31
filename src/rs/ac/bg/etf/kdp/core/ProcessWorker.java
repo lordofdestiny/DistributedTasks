@@ -26,9 +26,9 @@ public class ProcessWorker implements IRMIProcessWorker {
     private final UUID uuid = UUID.randomUUID();
     private final String host;
     private final int port;
-    private Timer timer = null;
     private IRMICentralServer server = null;
     private Long lastServerOnlineTimestamp;
+    private boolean connected = false;
 
     public ProcessWorker(String host, int port) {
         this.host = host;
@@ -37,7 +37,9 @@ public class ProcessWorker implements IRMIProcessWorker {
 
     @Override
     public void ping() {
-        System.out.printf("Ping from server at %s!\n", df.format(new Date()));
+        if (connected) {
+            System.out.printf("Ping from server at %s!\n", df.format(new Date()));
+        }
         try {
             server.ping(uuid);
         } catch (RemoteException e) {
@@ -61,14 +63,8 @@ public class ProcessWorker implements IRMIProcessWorker {
             server = (IRMICentralServer) registry.lookup("/CentralServer");
             server.registerWorker(uuid, this);
             lastServerOnlineTimestamp = System.currentTimeMillis();
-            final var pingServerTask = new TimerTask() {
-                @Override
-                public void run() {
-                    connectionTracker();
-                }
-            };
-            timer = new Timer();
-            timer.schedule(pingServerTask, 0, SERVER_PING_INTERVAL);
+            final var connectionTracker = new Thread(this::connectionTracker);
+            connectionTracker.start();
             return true;
         } catch (RemoteException | NotBoundException e) {
             return false;
@@ -86,19 +82,19 @@ public class ProcessWorker implements IRMIProcessWorker {
         }
     }
 
-    private void reconnectToServer() {
+    private int reconnectToServer() {
         if (System.currentTimeMillis() - lastServerOnlineTimestamp > 60 * 1000) {
             System.err.println("Could not reconnect to server! Exiting...");
-            timer.cancel();
-            System.exit(0); // maybe not?
+            System.exit(0);
+            return -1;
         }
         System.out.println("Reconnecting...");
         final var ping = pingServer();
         if (ping.isPresent()) {
             System.out.printf("Reconnected to server is %d ms\n", ping.get());
-            timer.cancel();
-            timer.purge();
+            return 0;
         }
+        return 1;
     }
 
     private void connectionTracker() {
@@ -108,16 +104,20 @@ public class ProcessWorker implements IRMIProcessWorker {
             lastServerOnlineTimestamp = System.currentTimeMillis();
         } else {
             System.err.println("Lost connection to server!");
-            timer.cancel();
-            timer.purge();
-            final var tryReconnectTask = new TimerTask() {
-                @Override
-                public void run() {
+            connected = false;
+            new Thread(()->{
+                while(true) {
+                    final int status = reconnectToServer();
+                    if(status <= 0) break;
                     reconnectToServer();
+                    try {
+                        //noinspection BusyWait
+                        Thread.sleep(SERVER_PING_INTERVAL);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
                 }
-            };
-            timer = new Timer();
-            timer.schedule(tryReconnectTask, 0, SERVER_PING_INTERVAL);
+            }).start();
         }
     }
 
