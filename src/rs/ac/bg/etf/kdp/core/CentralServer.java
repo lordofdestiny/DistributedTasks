@@ -53,22 +53,25 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
         }
     }
 
-    public CentralServer(int port) throws RemoteException {
+    private final Map<UUID, WorkerRecord> registeredWorkers = new ConcurrentHashMap<>();
+    private final Set<UUID> onlineWorkers = new ConcurrentSkipListSet<>();
+    private static final String SERVER_ROUTE = System.getProperty("server.route");
+    private static final int SERVER_PORT = Integer.parseInt(System.getProperty("server.port"));
+    private static final int SERVER_PING_INTERVAL = Integer.parseInt(System.getProperty("server.pingInterval"));
+
+    public CentralServer() throws RemoteException {
         super();
         try {
-            final var registry = LocateRegistry.createRegistry(port);
-            registry.rebind("/CentralServer", this);
-            System.out.println("Central server started");
+            final var registry = LocateRegistry.createRegistry(SERVER_PORT);
+            registry.rebind(SERVER_ROUTE, this);
+            System.out.printf("Server started on port %s", SERVER_PORT);
             CentralServer.setLog(System.out);
         } catch (RemoteException e) {
-            System.err.println("Failed to start central server");
+            System.err.println("Failed to start central server!");
             System.err.println(e.getMessage());
             System.exit(0);
         }
     }
-
-    private final Map<UUID, WorkerRecord> registeredWorkers = new ConcurrentHashMap<>();
-    private final Set<UUID> onlineWorkers = new ConcurrentSkipListSet<>();
 
     @Override
     public void registerWorker(UUID id, IRMIProcessWorker worker) throws RemoteException {
@@ -92,34 +95,31 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
     public static void main(String[] args) {
         CentralServer cs;
         try {
-            cs = new CentralServer(8080);
+            cs = new CentralServer();
         } catch (RemoteException e) {
             throw new RuntimeException(e);
         }
 
-        new Thread(() -> {
-            while (true) {
-                // Possibly replace with thread pool that talks to a queue
-                final var threads = cs.registeredWorkers.values().stream()
-                        .map((worker) ->(Runnable) () -> {
+        new Thread(cs::monitorWorkers).start();
+    }
 
-                                }
-                        ).map(Thread::new).toArray(Thread[]::new);
+    private void monitorWorkers() {
+        while (true) {
+            // Possibly replace with thread pool that talks to a queue
+            final var threads = registeredWorkers.values().stream()
+                    .map((worker) -> (Runnable) () -> workerMonitor(worker))
+                    .map(Thread::new).toArray(Thread[]::new);
+            Arrays.stream(threads).forEach(Thread::start);
+            try {
                 for (final var thead : threads) {
-                    try {
-                        thead.join();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
+                    thead.join();
                 }
-                try {
-                    //noinspection BusyWait
-                    Thread.sleep(3000);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
+                //noinspection BusyWait
+                Thread.sleep(SERVER_PING_INTERVAL);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
-        }).start();
+        }
     }
 
     private void workerMonitor(WorkerRecord worker) {

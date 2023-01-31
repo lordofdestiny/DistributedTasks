@@ -2,15 +2,12 @@ package rs.ac.bg.etf.kdp.core;
 
 import rs.ac.bg.etf.kdp.utils.PropertyLoader;
 
-import java.rmi.NoSuchObjectException;
-import java.rmi.NotBoundException;
-import java.rmi.RemoteException;
+import java.rmi.*;
 import java.rmi.registry.*;
 import java.rmi.server.*;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class ProcessWorker implements IRMIProcessWorker {
     static {
@@ -21,31 +18,33 @@ public class ProcessWorker implements IRMIProcessWorker {
         }
     }
 
-    private static final int SERVER_PING_INTERVAL = 10000;
+    private static final int SERVER_PING_INTERVAL = Integer.parseInt(System.getProperty("worker.pingInterval"));
     private static final String DATE_FORMAT_STR = "dd.MM.YYYY. HH:mm:ss";
     private static final DateFormat df = new SimpleDateFormat(DATE_FORMAT_STR);
+    private static final String SERVER_ROUTE = System.getProperty("server.route");
     private final UUID uuid = UUID.randomUUID();
     private final String host;
     private final int port;
     private IRMICentralServer server = null;
-    private Long lastServerOnlineTimestamp;
+    private Long lastOnlineTime;
     private boolean connected = false;
 
     public ProcessWorker(String host, int port) {
         this.host = host;
         this.port = port;
+
     }
 
     @Override
     public void ping() {
         if (connected) {
-            System.out.printf("Ping from server at %s!\n", df.format(new Date()));
+            System.out.printf("[%s]: Ping!\n", now());
         }
         try {
             server.ping(uuid);
         } catch (RemoteException e) {
-            System.err.println("Lost connection to server!");
-            System.out.println("Reconnecting...");
+            System.err.printf("[%s]: Lost connection to server!", now());
+            System.err.println("Reconnecting...");
         }
     }
 
@@ -53,6 +52,12 @@ public class ProcessWorker implements IRMIProcessWorker {
         try {
             final var that = this;
             UnicastRemoteObject.exportObject(this, 0);
+            Registry registry = LocateRegistry.getRegistry(host, port);
+            server = (IRMICentralServer) registry.lookup(SERVER_ROUTE);
+            server.registerWorker(uuid, this);
+            lastOnlineTime = System.currentTimeMillis();
+            final var connectionTracker = new Thread(this::connectionTracker);
+            connectionTracker.start();
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
                     UnicastRemoteObject.unexportObject(that, true);
@@ -60,12 +65,6 @@ public class ProcessWorker implements IRMIProcessWorker {
                     throw new RuntimeException(e);
                 }
             }));
-            Registry registry = LocateRegistry.getRegistry(host, port);
-            server = (IRMICentralServer) registry.lookup("/CentralServer");
-            server.registerWorker(uuid, this);
-            lastServerOnlineTimestamp = System.currentTimeMillis();
-            final var connectionTracker = new Thread(this::connectionTracker);
-            connectionTracker.start();
             return true;
         } catch (RemoteException | NotBoundException e) {
             return false;
@@ -84,12 +83,11 @@ public class ProcessWorker implements IRMIProcessWorker {
     }
 
     private void reconnectToServer() {
-        long time = 0;
-        while ((time = System.currentTimeMillis()) - lastServerOnlineTimestamp < 60 * 1000){
+        while (System.currentTimeMillis() - lastOnlineTime < 60 * 1000) {
             System.out.println("Reconnecting...");
             final var ping = pingServer();
             if (ping.isPresent()) {
-                System.out.printf("Reconnected to server, ping is %d ms\n", ping.get());
+                System.out.printf("Reconnected, ping is %d ms\n", ping.get());
                 return;
             }
         }
@@ -102,7 +100,7 @@ public class ProcessWorker implements IRMIProcessWorker {
             final var ping = pingServer();
             if (ping.isPresent()) {
                 System.out.printf("Ping to server is %d ms\n", ping.get());
-                lastServerOnlineTimestamp = System.currentTimeMillis();
+                lastOnlineTime = System.currentTimeMillis();
                 try {
                     //noinspection BusyWait
                     Thread.sleep(SERVER_PING_INTERVAL);
@@ -117,8 +115,12 @@ public class ProcessWorker implements IRMIProcessWorker {
         }
     }
 
+    private static String now() {
+        return df.format(new Date());
+    }
+
     public static void main(String[] args) {
-        ProcessWorker pw = new ProcessWorker("147.91.12.72", 8080);
+        ProcessWorker pw = new ProcessWorker("localhost", 8080);
         final var connected = pw.connectToServer();
         if (!connected) {
             System.err.println("Failed to connect to server!");
