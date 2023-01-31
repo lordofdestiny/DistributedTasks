@@ -6,4 +6,5 @@ import java.util.UUID;
 
 public interface IRMICentralServer extends Remote {
     void registerWorker(UUID id , IRMIProcessWorker worker) throws RemoteException;
+    void ping(UUID id) throws RemoteException;
 }
