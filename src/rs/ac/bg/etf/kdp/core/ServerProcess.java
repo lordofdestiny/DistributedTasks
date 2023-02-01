@@ -9,7 +9,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 
-public class ServerProcess extends UnicastRemoteObject implements IRMIServerProcess {
+public class ServerProcess
+        extends UnicastRemoteObject
+        implements IServerWorker, IServerClient {
     static {
         try {
             PropertyLoader.loadConfiguration();
@@ -20,10 +22,10 @@ public class ServerProcess extends UnicastRemoteObject implements IRMIServerProc
 
     private static class WorkerRecord {
         public UUID id;
-        public IRMIWorkerProcess handle;
+        public IWorkerServer handle;
         private boolean online;
 
-        WorkerRecord(UUID id, IRMIWorkerProcess worker) {
+        WorkerRecord(UUID id, IWorkerServer worker) {
             this.id = id;
             this.handle = worker;
             this.online = true;
@@ -54,6 +56,7 @@ public class ServerProcess extends UnicastRemoteObject implements IRMIServerProc
     }
 
     private final Map<UUID, WorkerRecord> registeredWorkers = new ConcurrentHashMap<>();
+    private final Map<UUID, IClientServer> registeredClients = new ConcurrentHashMap<>();
     private final Set<UUID> onlineWorkers = new ConcurrentSkipListSet<>();
     private static final String SERVER_ROUTE = System.getProperty("server.route");
     private static final int SERVER_PORT = Integer.parseInt(System.getProperty("server.port"));
@@ -74,17 +77,24 @@ public class ServerProcess extends UnicastRemoteObject implements IRMIServerProc
     }
 
     @Override
-    public void registerWorker(UUID id, IRMIWorkerProcess worker) throws RemoteException {
+    public void register(UUID id, IWorkerServer worker) throws RemoteException {
         final var record = new WorkerRecord(id, worker);
         registeredWorkers.put(id, record);
         try {
             worker.ping();
             record.setOnline();
             System.out.printf("Worker %s is online!\n", id);
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (RuntimeException e) {
             System.err.printf("Worker %s failed and is offline!\n", id);
         }
+    }
+
+    @Override
+    public void register(UUID id, IClientServer client) throws RemoteException {
+        // Maybe make a client record
+        registeredClients.put(id, client);
+        // Maybe ping the client
+        System.out.printf("Client %s is online!\n", id);
     }
 
     @Override
@@ -92,8 +102,10 @@ public class ServerProcess extends UnicastRemoteObject implements IRMIServerProc
         if (registeredWorkers.containsKey(id)) {
             onlineWorkers.add(id);
             registeredWorkers.get(id).setOnline();
-        }else {
+        } else if (registeredClients.containsKey(id)) {
             // Maybe a client
+        } else {
+            throw new UnknownUUIDException();
         }
     }
 

@@ -1,14 +1,13 @@
 package rs.ac.bg.etf.kdp.utils;
 
-import rs.ac.bg.etf.kdp.core.IRMIServerProcess;
-
-import java.rmi.RemoteException;
-import java.util.ArrayList;
-import java.util.Optional;
-import java.util.UUID;
+import java.rmi.*;
+import java.util.*;
 
 public class ConnectionMonitor implements Runnable {
-    private final IRMIServerProcess server;
+    public interface Pingable extends Remote {
+        void ping(UUID uuid) throws RemoteException;
+    }
+    private final Pingable server;
     private final UUID uuid;
     private final int interval;
     private final Thread thread;
@@ -16,13 +15,16 @@ public class ConnectionMonitor implements Runnable {
     private boolean connected = true;
     private final ArrayList<ConnectionListener> listeners = new ArrayList<>();
 
-    public ConnectionMonitor(IRMIServerProcess server, int pingInterval, UUID uuid) {
+    public ConnectionMonitor(Pingable server, int pingInterval, UUID uuid) {
         this.server = server;
         this.uuid = uuid;
         this.interval = pingInterval;
         thread = new Thread(this, "ConnectionMonitor-"+uuid);
-        thread.start();
         addEventListener(new DefaultListener());
+    }
+
+    public void start() {
+        thread.start();
     }
 
     @Override
