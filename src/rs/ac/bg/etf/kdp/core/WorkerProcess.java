@@ -1,6 +1,6 @@
 package rs.ac.bg.etf.kdp.core;
 
-import rs.ac.bg.etf.kdp.utils.PropertyLoader;
+import rs.ac.bg.etf.kdp.utils.*;
 
 import java.rmi.*;
 import java.rmi.registry.*;
@@ -26,8 +26,7 @@ public class WorkerProcess implements IRMIWorkerProcess {
     private final String host;
     private final int port;
     private IRMIServerProcess server = null;
-    private Long lastOnlineTime;
-    private boolean connected = false;
+    private ConnectionMonitor connectionTracker;
 
     public WorkerProcess(String host, int port) {
         this.host = host;
@@ -37,7 +36,7 @@ public class WorkerProcess implements IRMIWorkerProcess {
 
     @Override
     public void ping() {
-        if (connected) {
+        if (connectionTracker != null && connectionTracker.connected()) {
             System.out.printf("[%s]: Ping!\n", now());
         }
         try {
@@ -55,9 +54,30 @@ public class WorkerProcess implements IRMIWorkerProcess {
             Registry registry = LocateRegistry.getRegistry(host, port);
             server = (IRMIServerProcess) registry.lookup(SERVER_ROUTE);
             server.registerWorker(uuid, this);
-            lastOnlineTime = System.currentTimeMillis();
-            final var connectionTracker = new Thread(this::connectionTracker);
-            connectionTracker.start();
+            connectionTracker = new ConnectionMonitor(server, SERVER_PING_INTERVAL, uuid);
+            connectionTracker.addEventListener(new ConnectionListener(){
+                @Override
+                public void onPingComplete(long ping) {
+                    System.out.printf("[%s]: Ping is %d ms\n", now(), ping);
+                }
+                @Override
+                public void onConnectionLost() {
+                    System.err.println("Lost connection to server!");
+                }
+                @Override
+                public void onReconnecting() {
+                    System.err.println("Reconnecting...");
+                }
+                @Override
+                public void onReconnected(long ping) {
+                    System.out.printf("Reconnected, ping is %d ms\n", ping);
+                }
+                @Override
+                public void onReconnectionFailed() {
+                    System.err.println("Could not reconnect to server! Exiting...");
+                    System.exit(0);
+                }
+            });
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
                     UnicastRemoteObject.unexportObject(that, true);
@@ -68,50 +88,6 @@ public class WorkerProcess implements IRMIWorkerProcess {
             return true;
         } catch (RemoteException | NotBoundException e) {
             return false;
-        }
-    }
-
-    private Optional<Long> pingServer() {
-        try {
-            final var start = System.currentTimeMillis();
-            server.ping(uuid);
-            final var end = System.currentTimeMillis();
-            return Optional.of(end - start);
-        } catch (RemoteException e) {
-            return Optional.empty();
-        }
-    }
-
-    private void reconnectToServer() {
-        while (System.currentTimeMillis() - lastOnlineTime < 60 * 1000) {
-            System.out.println("Reconnecting...");
-            final var ping = pingServer();
-            if (ping.isPresent()) {
-                System.out.printf("Reconnected, ping is %d ms\n", ping.get());
-                return;
-            }
-        }
-        System.err.println("Could not reconnect to server! Exiting...");
-        System.exit(0);
-    }
-
-    private void connectionTracker() {
-        while (true) {
-            final var ping = pingServer();
-            if (ping.isPresent()) {
-                System.out.printf("Ping to server is %d ms\n", ping.get());
-                lastOnlineTime = System.currentTimeMillis();
-                try {
-                    //noinspection BusyWait
-                    Thread.sleep(SERVER_PING_INTERVAL);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                continue;
-            }
-            System.err.println("Lost connection to server!");
-            connected = false;
-            reconnectToServer();
         }
     }
 

@@ -79,17 +79,22 @@ public class ServerProcess extends UnicastRemoteObject implements IRMIServerProc
         registeredWorkers.put(id, record);
         try {
             worker.ping();
-            System.out.printf("Worker %s is online!\n", id);
             record.setOnline();
+            System.out.printf("Worker %s is online!\n", id);
         } catch (Exception e) {
+            e.printStackTrace();
             System.err.printf("Worker %s failed and is offline!\n", id);
         }
     }
 
     @Override
     public void ping(UUID id) throws RemoteException {
-        onlineWorkers.add(id);
-        registeredWorkers.get(id).setOnline();
+        if (registeredWorkers.containsKey(id)) {
+            onlineWorkers.add(id);
+            registeredWorkers.get(id).setOnline();
+        }else {
+            // Maybe a client
+        }
     }
 
     public static void main(String[] args) {
@@ -100,6 +105,7 @@ public class ServerProcess extends UnicastRemoteObject implements IRMIServerProc
             throw new RuntimeException(e);
         }
 
+        // Refactor this to a nicer place
         new Thread(cs::monitorWorkers).start();
     }
 
@@ -111,8 +117,8 @@ public class ServerProcess extends UnicastRemoteObject implements IRMIServerProc
                     .map(Thread::new).toArray(Thread[]::new);
             Arrays.stream(threads).forEach(Thread::start);
             try {
-                for (final var thead : threads) {
-                    thead.join();
+                for (final var thread : threads) {
+                    thread.join();
                 }
                 //noinspection BusyWait
                 Thread.sleep(SERVER_PING_INTERVAL);
