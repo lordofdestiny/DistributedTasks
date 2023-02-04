@@ -30,8 +30,8 @@ import javax.swing.SwingConstants;
 import rs.ac.bg.etf.kdp.core.IPingable;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
-import rs.ac.bg.etf.kdp.utils.ConnectionInfo.ConnectionProvider;
 import rs.ac.bg.etf.kdp.utils.ConnectionMonitor;
+import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
 
 class GetConnectionInfo extends JDialog {
 	/**
