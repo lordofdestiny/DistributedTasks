@@ -1,6 +1,7 @@
 package rs.ac.bg.etf.kdp.tuple;
 
-import java.util.concurrent.locks.*;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 
 
 /**
@@ -17,7 +18,11 @@ import java.util.concurrent.locks.*;
  * is waiting must be locked before calling await.
  */
 public class AwaitableTuple extends Tuple {
-    private final Condition condition;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	private final Condition condition;
     private Tuple value = null;
 
     public AwaitableTuple(Tuple template, Lock l) {
