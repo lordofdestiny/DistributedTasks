@@ -1,23 +1,22 @@
 package rs.ac.bg.etf.kdp.utils;
 
-import java.rmi.*;
-import java.util.*;
+import java.rmi.RemoteException;
+import java.util.ArrayList;
+import java.util.Optional;
+import java.util.UUID;
+
+import rs.ac.bg.etf.kdp.core.IPingable;
 
 public class ConnectionMonitor implements Runnable {
-    public interface Pingable extends Remote {
-        void ping(UUID uuid) throws RemoteException;
-    }
-    private final Pingable server;
-    private final UUID uuid;
+    private final IPingable server;
     private final int interval;
     private final Thread thread;
     private long lastOnlineTime;
     private boolean connected = true;
     private final ArrayList<ConnectionListener> listeners = new ArrayList<>();
 
-    public ConnectionMonitor(Pingable server, int pingInterval, UUID uuid) {
+    public ConnectionMonitor(IPingable server, int pingInterval, UUID uuid) {
         this.server = server;
-        this.uuid = uuid;
         this.interval = pingInterval;
         thread = new Thread(this, "ConnectionMonitor-"+uuid);
         addEventListener(new DefaultListener());
@@ -29,9 +28,14 @@ public class ConnectionMonitor implements Runnable {
 
     @Override
     public void run() {
+    	boolean first = true;
         while (true) {
             final var ping = pingServer();
             if (ping.isPresent()) {
+            	if(first) {
+            		listeners.forEach(ConnectionListener::onConnected);
+            		first = false;
+            	}
                 // Ping successful
                 listeners.forEach(l -> l.onPingComplete(ping.get()));
                 try {
@@ -44,6 +48,7 @@ public class ConnectionMonitor implements Runnable {
             }
             // Ping failed
             listeners.forEach(ConnectionListener::onConnectionLost);
+            reconnectToServer();
         }
     }
 
@@ -60,11 +65,15 @@ public class ConnectionMonitor implements Runnable {
         // Reconnection failed
         listeners.forEach(ConnectionListener::onReconnectionFailed);
     }
-
+    
     private Optional<Long> pingServer() {
-        try {
+    	return getPing(server);
+    }
+    
+    public static Optional<Long> getPing(IPingable pingable) {
+    	try {
             final var start = System.currentTimeMillis();
-            server.ping(uuid);
+            pingable.ping();
             final var end = System.currentTimeMillis();
             return Optional.of(end - start);
         } catch (RemoteException e) {
@@ -92,6 +101,11 @@ public class ConnectionMonitor implements Runnable {
     }
 
     private class DefaultListener implements ConnectionListener{
+    	@Override
+		public void onConnected() {
+            setConnected(true);			
+		}
+    	
         @Override
         public void onPingComplete(long ping) {
             lastOnlineTime = System.currentTimeMillis();
@@ -99,7 +113,6 @@ public class ConnectionMonitor implements Runnable {
         @Override
         public void onConnectionLost() {
             setConnected(false);
-            reconnectToServer();
         }
         @Override
         public void onReconnecting() {
