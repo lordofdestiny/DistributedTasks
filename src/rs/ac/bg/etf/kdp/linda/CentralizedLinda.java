@@ -1,7 +1,10 @@
 package rs.ac.bg.etf.kdp.linda;
 
-import java.util.*;
-import java.util.concurrent.locks.*;
+import java.util.List;
+import java.util.Objects;
+import java.util.Random;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import rs.ac.bg.etf.kdp.Linda;
 import rs.ac.bg.etf.kdp.tuple.AwaitableTuple;
@@ -11,7 +14,12 @@ import rs.ac.bg.etf.kdp.utils.ReadWriteList;
 
 
 public class CentralizedLinda implements Linda {
-    private final Lock lock = new ReentrantLock();
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	
+	private final Lock lock = new ReentrantLock();
     private final List<Tuple> tupleSpace = new ReadWriteList<>();
     private final List<AwaitableTuple> readConditions = new ReadWriteList<>();
     private final List<AwaitableTuple> takeConditions = new ReadWriteList<>();
