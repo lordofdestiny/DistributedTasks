@@ -1,8 +1,6 @@
 package rs.ac.bg.etf.kdp.utils;
 
-import java.rmi.RemoteException;
 import java.util.ArrayList;
-import java.util.Optional;
 import java.util.UUID;
 
 import rs.ac.bg.etf.kdp.core.IPingable;
@@ -30,7 +28,7 @@ public class ConnectionMonitor implements Runnable {
     public void run() {
     	boolean first = true;
         while (true) {
-            final var ping = pingServer();
+            final var ping = server.getPing();
             if (ping.isPresent()) {
             	if(first) {
             		listeners.forEach(ConnectionListener::onConnected);
@@ -56,7 +54,7 @@ public class ConnectionMonitor implements Runnable {
         while (System.currentTimeMillis() - lastOnlineTime < 60 * 1000) {
             // Reconnecting
             listeners.forEach(ConnectionListener::onReconnecting);
-            final var ping = pingServer();
+            final var ping = server.getPing();
             if (ping.isPresent()) {
                 listeners.forEach(l->l.onReconnected(ping.get()));
                 return;
@@ -64,21 +62,6 @@ public class ConnectionMonitor implements Runnable {
         }
         // Reconnection failed
         listeners.forEach(ConnectionListener::onReconnectionFailed);
-    }
-    
-    private Optional<Long> pingServer() {
-    	return getPing(server);
-    }
-    
-    public static Optional<Long> getPing(IPingable pingable) {
-    	try {
-            final var start = System.currentTimeMillis();
-            pingable.ping();
-            final var end = System.currentTimeMillis();
-            return Optional.of(end - start);
-        } catch (RemoteException e) {
-            return Optional.empty();
-        }
     }
 
     private synchronized void setConnected(boolean connected) {

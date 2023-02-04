@@ -30,7 +30,6 @@ import javax.swing.SwingConstants;
 import rs.ac.bg.etf.kdp.core.IPingable;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
-import rs.ac.bg.etf.kdp.utils.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
 
 class GetConnectionInfo extends JDialog {
@@ -176,9 +175,7 @@ class GetConnectionInfo extends JDialog {
 		btnConfirm = new JButton("Confirm");
 		btnConfirm.setEnabled(false);
 		btnConfirm.addActionListener(e -> {
-			if (connected != null) {
-				connected.run();
-			}
+			connected.run();
 			dispose();
 		});
 		GridBagConstraints gbc_btnConfirm = new GridBagConstraints();
@@ -205,18 +202,6 @@ class GetConnectionInfo extends JDialog {
 		}
 	}
 
-	private static String getConnectionMessage(ConnectionInfo info, long ping) {
-		StringBuilder sb = new StringBuilder(100);
-		sb.append("Server available at ");
-		sb.append(info.getIp());
-		sb.append(':');
-		sb.append(info.getPort());
-		sb.append(".\nPing: ");
-		sb.append(ping);
-		sb.append(" ms");
-		return sb.toString();
-	}
-
 	private void verifyAction(ActionEvent e) {
 		final var ip = txtIP.getText();
 		final var portText = txtPort.getText();
@@ -237,28 +222,40 @@ class GetConnectionInfo extends JDialog {
 			showMessageDialog(GetConnectionInfo.this, "Please provide a valid port!", "No Invalid", ERROR_MESSAGE);
 			return;
 		}
+		int port = Integer.valueOf(txtPort.getText());
+		final var info = new ConnectionInfo(ip, port);
+		IPingable server = null;
 		try {
-			int port = Integer.valueOf(txtPort.getText());
-			final var info = new ConnectionInfo(ip, port);
-			final var server = ConnectionProvider.connect(info, IPingable.class)
-					.orElseThrow(ServerUnavailableException::new);
-
-			final var ping = ConnectionMonitor.getPing(server).orElseThrow(ServerUnavailableException::new);
-
-			showMessageDialog(GetConnectionInfo.this, getConnectionMessage(info, ping), "Connected!",
-					INFORMATION_MESSAGE);
-
-			infoReady.accept(info);
-
-			btnConfirm.setEnabled(true);
-			btnVerify.setEnabled(false);
-			txtIP.setEnabled(false);
-			txtPort.setEnabled(false);
-			btnVerify.getInputMap().remove(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0));
-			btnVerify.getActionMap().remove("ENTER");
+			server = ConnectionProvider.connect(info, IPingable.class);
 		} catch (ServerUnavailableException e1) {
-			showMessageDialog(GetConnectionInfo.this, "Failed to connect to the server!", "No connection",
-					ERROR_MESSAGE);
+			showConnectionFailed();
+			return;
 		}
+
+		server.getPing().ifPresentOrElse((ping) -> {
+			showConnectionSuccessful(info, ping);
+			infoReady.accept(info);
+			setFinalState();
+		}, this::showConnectionFailed);
+
+	}
+
+	private void showConnectionSuccessful(ConnectionInfo info, long ping) {
+		StringBuilder message = new StringBuilder(100);
+		message.append("Server available at ");
+		message.append(info.getIp()).append(':').append(info.getPort());
+		message.append(".\nPing: ").append(ping).append(" ms");
+		showMessageDialog(GetConnectionInfo.this, message.toString(), "Connected!", INFORMATION_MESSAGE);
+	}
+
+	private void setFinalState() {
+		btnConfirm.setEnabled(true);
+		btnVerify.setEnabled(false);
+		txtIP.setEnabled(false);
+		txtPort.setEnabled(false);
+	}
+
+	private void showConnectionFailed() {
+		showMessageDialog(GetConnectionInfo.this, "Failed to connect to the server!", "No connection", ERROR_MESSAGE);
 	}
 }

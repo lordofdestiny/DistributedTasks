@@ -1,19 +1,19 @@
 package rs.ac.bg.etf.kdp.core;
 
-import java.rmi.NoSuchObjectException;
-import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.UUID;
 
+import rs.ac.bg.etf.kdp.gui.client.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.Configuration;
+import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
 import rs.ac.bg.etf.kdp.utils.ConnectionMonitor;
+import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
+import rs.ac.bg.etf.kdp.utils.UnicastUnexportHook;
 
 public class WorkerProcess implements IWorkerServer {
 	static {
@@ -49,21 +49,14 @@ public class WorkerProcess implements IWorkerServer {
 
 	private boolean connectToServer() {
 		try {
+			final var ci = new ConnectionInfo(host, port);
+			server = ConnectionProvider.connect(ci, IServerWorker.class);			
 			UnicastRemoteObject.exportObject(this, 0);
-			Registry registry = LocateRegistry.getRegistry(host, port);
-			server = (IServerWorker) registry.lookup(Configuration.SERVER_ROUTE);
 			server.register(uuid, this);
-		} catch (RemoteException | NotBoundException e) {
+		} catch (RemoteException | ServerUnavailableException e) {
 			return false;
 		}
-		final var that = this;
-		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-			try {
-				UnicastRemoteObject.unexportObject(that, true);
-			} catch (NoSuchObjectException e) {
-				throw new RuntimeException(e);
-			}
-		}));
+		Runtime.getRuntime().addShutdownHook(new UnicastUnexportHook(this));
 		connectionTracker = new ConnectionMonitor(server, Configuration.SERVER_PING_INTERVAL, uuid);
 		connectionTracker.addEventListener(new ConnectionListener() {
 			@Override

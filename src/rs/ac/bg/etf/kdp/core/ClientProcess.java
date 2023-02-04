@@ -1,7 +1,6 @@
 package rs.ac.bg.etf.kdp.core;
 
 import java.nio.file.Path;
-import java.rmi.NoSuchObjectException;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
@@ -15,6 +14,7 @@ import rs.ac.bg.etf.kdp.utils.ConnectionListener;
 import rs.ac.bg.etf.kdp.utils.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
 import rs.ac.bg.etf.kdp.utils.TransferListener;
+import rs.ac.bg.etf.kdp.utils.UnicastUnexportHook;
 
 public class ClientProcess implements IClientServer {
 	private ConnectionMonitor monitor = null;
@@ -27,28 +27,19 @@ public class ClientProcess implements IClientServer {
 		this.conectionInfo = info;
 	}
 
-	public boolean connectToServer() throws ServerUnavailableException {
+	public boolean connectToServer() {
 		return connectToServer(null);
 	}
 
-	public boolean connectToServer(List<ConnectionListener> listeners) throws ServerUnavailableException {
-		server = ConnectionProvider.connect(conectionInfo, IServerClient.class)
-				.orElseThrow(ServerUnavailableException::new);
-
+	public boolean connectToServer(List<ConnectionListener> listeners) {
 		try {
+			server = ConnectionProvider.connect(conectionInfo, IServerClient.class);
 			UnicastRemoteObject.exportObject(this, 0);
 			server.register(uuid, this);
-		} catch (RemoteException e) {
-			throw new ServerUnavailableException();
+		} catch (RemoteException | ServerUnavailableException e) {
+			return false;
 		}
-		final var that = this;
-		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-			try {
-				UnicastRemoteObject.unexportObject(that, true);
-			} catch (NoSuchObjectException e) {
-				throw new RuntimeException(e);
-			}
-		}));
+		Runtime.getRuntime().addShutdownHook(new UnicastUnexportHook(this));
 		monitor = new ConnectionMonitor(server, 5000, uuid);
 		if (listeners != null) {
 			listeners.forEach(monitor::addEventListener);
@@ -62,7 +53,7 @@ public class ClientProcess implements IClientServer {
 	}
 
 	public void sendJob(Path zipFile, TransferListener cb) {
-
+		
 	}
 
 	@SuppressWarnings("unused")
@@ -115,11 +106,8 @@ public class ClientProcess implements IClientServer {
 				System.exit(0);
 			}
 		});
-		try {
-			cp.connectToServer(listeners);
-		} catch (ServerUnavailableException e) {
+		if (!cp.connectToServer(listeners)) {
 			System.err.println("Failed to connect to server!");
-			e.printStackTrace();
 			System.exit(0);
 		}
 	}

@@ -80,14 +80,14 @@ class EnterUUID extends JDialog {
 			gbc_verticalStrut.gridy = 0;
 			contentPanel.add(verticalStrut, gbc_verticalStrut);
 		}
-		{
-			JLabel lblPaste = new JLabel("Please paste your UUID here");
-			GridBagConstraints gbc_lblPaste = new GridBagConstraints();
-			gbc_lblPaste.insets = new Insets(0, 0, 5, 5);
-			gbc_lblPaste.gridx = 1;
-			gbc_lblPaste.gridy = 1;
-			contentPanel.add(lblPaste, gbc_lblPaste);
-		}
+
+		JLabel lblPaste = new JLabel("Please paste your UUID here");
+		GridBagConstraints gbc_lblPaste = new GridBagConstraints();
+		gbc_lblPaste.insets = new Insets(0, 0, 5, 5);
+		gbc_lblPaste.gridx = 1;
+		gbc_lblPaste.gridy = 1;
+		contentPanel.add(lblPaste, gbc_lblPaste);
+
 		{
 			Component horizontalStrut = Box.createHorizontalStrut(20);
 			GridBagConstraints gbc_horizontalStrut = new GridBagConstraints();
@@ -96,18 +96,18 @@ class EnterUUID extends JDialog {
 			gbc_horizontalStrut.gridy = 2;
 			contentPanel.add(horizontalStrut, gbc_horizontalStrut);
 		}
-		{
-			textField = new JTextField();
-			textField.setEditable(false);
-			textField.setHorizontalAlignment(SwingConstants.CENTER);
-			GridBagConstraints gbc_textField = new GridBagConstraints();
-			gbc_textField.fill = GridBagConstraints.HORIZONTAL;
-			gbc_textField.insets = new Insets(0, 0, 5, 5);
-			gbc_textField.gridx = 1;
-			gbc_textField.gridy = 2;
-			contentPanel.add(textField, gbc_textField);
-			textField.setColumns(10);
-		}
+
+		textField = new JTextField();
+		textField.setEditable(false);
+		textField.setHorizontalAlignment(SwingConstants.CENTER);
+		GridBagConstraints gbc_textField = new GridBagConstraints();
+		gbc_textField.fill = GridBagConstraints.HORIZONTAL;
+		gbc_textField.insets = new Insets(0, 0, 5, 5);
+		gbc_textField.gridx = 1;
+		gbc_textField.gridy = 2;
+		contentPanel.add(textField, gbc_textField);
+		textField.setColumns(10);
+
 		{
 			Component horizontalStrut = Box.createHorizontalStrut(20);
 			GridBagConstraints gbc_horizontalStrut = new GridBagConstraints();
@@ -116,51 +116,49 @@ class EnterUUID extends JDialog {
 			gbc_horizontalStrut.gridy = 2;
 			contentPanel.add(horizontalStrut, gbc_horizontalStrut);
 		}
-		{
-			JButton btnNewButton = new JButton("Paste");
-			btnNewButton.addActionListener(e -> {
-				final var clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-				final var flavor = DataFlavor.stringFlavor;
-				if (clipboard.isDataFlavorAvailable(flavor)) {
-					try {
-						final var uuid = (String) clipboard.getData(flavor);
-						textField.setText(uuid);
-					} catch (Exception e1) {
-					}
+
+		JButton btnNewButton = new JButton("Paste");
+		btnNewButton.addActionListener(e -> {
+			final var clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+			final var flavor = DataFlavor.stringFlavor;
+			if (clipboard.isDataFlavorAvailable(flavor)) {
+				try {
+					final var uuid = (String) clipboard.getData(flavor);
+					textField.setText(uuid);
+				} catch (Exception e1) {
+					throw new RuntimeException();
 				}
-			});
-			GridBagConstraints gbc_btnNewButton = new GridBagConstraints();
-			gbc_btnNewButton.anchor = GridBagConstraints.EAST;
-			gbc_btnNewButton.insets = new Insets(0, 0, 0, 5);
-			gbc_btnNewButton.gridx = 1;
-			gbc_btnNewButton.gridy = 3;
-			contentPanel.add(btnNewButton, gbc_btnNewButton);
-		}
-		{
-			JPanel buttonPane = new JPanel();
-			buttonPane.setLayout(new FlowLayout(FlowLayout.CENTER));
-			getContentPane().add(buttonPane, BorderLayout.SOUTH);
-			{
-				JButton okButton = new JButton("OK");
-				okButton.setActionCommand("OK");
-				buttonPane.add(okButton);
-				getRootPane().setDefaultButton(okButton);
-				okButton.addActionListener(e -> {
-					try {
-						uuid = UUID.fromString(textField.getText());
-						dispose();
-					} catch (IllegalArgumentException iae) {
-						showMessageDialog(EnterUUID.this, "Invalid UUID format", "Error", ERROR_MESSAGE);
-					}
-				});
 			}
-			{
-				JButton cancelButton = new JButton("Cancel");
-				cancelButton.setActionCommand("Cancel");
-				buttonPane.add(cancelButton);
-				cancelButton.addActionListener(e -> dispose());
+		});
+		GridBagConstraints gbc_btnNewButton = new GridBagConstraints();
+		gbc_btnNewButton.anchor = GridBagConstraints.EAST;
+		gbc_btnNewButton.insets = new Insets(0, 0, 0, 5);
+		gbc_btnNewButton.gridx = 1;
+		gbc_btnNewButton.gridy = 3;
+		contentPanel.add(btnNewButton, gbc_btnNewButton);
+
+		JPanel buttonPane = new JPanel();
+		buttonPane.setLayout(new FlowLayout(FlowLayout.CENTER));
+		getContentPane().add(buttonPane, BorderLayout.SOUTH);
+
+		JButton okButton = new JButton("OK");
+		okButton.setActionCommand("OK");
+		buttonPane.add(okButton);
+		getRootPane().setDefaultButton(okButton);
+		okButton.addActionListener(e -> {
+			try {
+				uuid = UUID.fromString(textField.getText());
+				dispose();
+			} catch (IllegalArgumentException iae) {
+				showMessageDialog(EnterUUID.this, "Invalid UUID format", "Error", ERROR_MESSAGE);
 			}
-		}
+		});
+
+		JButton cancelButton = new JButton("Cancel");
+		cancelButton.setActionCommand("Cancel");
+		buttonPane.add(cancelButton);
+		cancelButton.addActionListener(e -> dispose());
+
 	}
 
 	public Optional<UUID> getUUID() {

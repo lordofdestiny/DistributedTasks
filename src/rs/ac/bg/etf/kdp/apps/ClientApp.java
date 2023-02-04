@@ -16,7 +16,6 @@ import javax.swing.filechooser.FileSystemView;
 
 import rs.ac.bg.etf.kdp.core.ClientProcess;
 import rs.ac.bg.etf.kdp.gui.client.ClientAppFrame;
-import rs.ac.bg.etf.kdp.gui.client.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
 import rs.ac.bg.etf.kdp.utils.JobRequestDescriptor;
@@ -72,10 +71,10 @@ public class ClientApp {
 					System.exit(0);
 				}
 			});
-			try {
-				process.connectToServer(listeners);
+			
+			if (process.connectToServer(listeners)) {
 				System.out.println("Connected!");
-			} catch (ServerUnavailableException e) {
+			}else {
 				System.err.println("Failed to connect to server!");
 				System.exit(0);
 			}

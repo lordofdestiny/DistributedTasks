@@ -66,58 +66,50 @@ class DisplayUUID extends JDialog {
 		getRootPane().registerKeyboardAction(e -> {
 			DisplayUUID.this.dispose();
 		}, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_IN_FOCUSED_WINDOW);
-			
-		{
-			Component horizontalStrut = Box.createHorizontalStrut(20);
-			GridBagConstraints gbc_horizontalStrut = new GridBagConstraints();
-			gbc_horizontalStrut.insets = new Insets(0, 0, 5, 5);
-			gbc_horizontalStrut.gridx = 2;
-			gbc_horizontalStrut.gridy = 0;
-			contentPanel.add(horizontalStrut, gbc_horizontalStrut);
-		}
-		{
-			JLabel lblUUID = new JLabel("Your Current UUID");
-			GridBagConstraints gbc_lblUUID = new GridBagConstraints();
-			gbc_lblUUID.insets = new Insets(0, 0, 5, 5);
-			gbc_lblUUID.gridx = 2;
-			gbc_lblUUID.gridy = 1;
-			contentPanel.add(lblUUID, gbc_lblUUID);
-		}
-		{
-			txtUUID = new JTextField();
-			txtUUID.setHorizontalAlignment(SwingConstants.CENTER);
-			txtUUID.setEditable(false);
-			GridBagConstraints gbc_txtUUID = new GridBagConstraints();
-			gbc_txtUUID.gridwidth = 3;
-			gbc_txtUUID.insets = new Insets(0, 0, 0, 5);
-			gbc_txtUUID.fill = GridBagConstraints.HORIZONTAL;
-			gbc_txtUUID.gridx = 1;
-			gbc_txtUUID.gridy = 2;
-			contentPanel.add(txtUUID, gbc_txtUUID);
-			txtUUID.setColumns(10);
-			txtUUID.setText(uuid.toString());
-		}
-		{
-			JPanel buttonPane = new JPanel();
-			buttonPane.setLayout(new FlowLayout(FlowLayout.CENTER));
-			getContentPane().add(buttonPane, BorderLayout.SOUTH);
-			{
-				JButton btnCopy = new JButton("Copy");
-				btnCopy.addActionListener(e -> {
-					final var clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-					clipboard.setContents(new StringSelection(uuid.toString()), null);
-				});
-				buttonPane.add(btnCopy);
-				getRootPane().setDefaultButton(btnCopy);
-			}
-			{
-				JButton btnClose = new JButton("Close");
-				btnClose.addActionListener(e -> {
-					dispose();
-				});
-				buttonPane.add(btnClose);
-			}
-		}
+
+		Component horizontalStrut = Box.createHorizontalStrut(20);
+		GridBagConstraints gbc_horizontalStrut = new GridBagConstraints();
+		gbc_horizontalStrut.insets = new Insets(0, 0, 5, 5);
+		gbc_horizontalStrut.gridx = 2;
+		gbc_horizontalStrut.gridy = 0;
+		contentPanel.add(horizontalStrut, gbc_horizontalStrut);
+
+		JLabel lblUUID = new JLabel("Your Current UUID");
+		GridBagConstraints gbc_lblUUID = new GridBagConstraints();
+		gbc_lblUUID.insets = new Insets(0, 0, 5, 5);
+		gbc_lblUUID.gridx = 2;
+		gbc_lblUUID.gridy = 1;
+		contentPanel.add(lblUUID, gbc_lblUUID);
+
+		txtUUID = new JTextField();
+		txtUUID.setHorizontalAlignment(SwingConstants.CENTER);
+		txtUUID.setEditable(false);
+		GridBagConstraints gbc_txtUUID = new GridBagConstraints();
+		gbc_txtUUID.gridwidth = 3;
+		gbc_txtUUID.insets = new Insets(0, 0, 0, 5);
+		gbc_txtUUID.fill = GridBagConstraints.HORIZONTAL;
+		gbc_txtUUID.gridx = 1;
+		gbc_txtUUID.gridy = 2;
+		contentPanel.add(txtUUID, gbc_txtUUID);
+		txtUUID.setColumns(10);
+		txtUUID.setText(uuid.toString());
+
+		JPanel buttonPane = new JPanel();
+		buttonPane.setLayout(new FlowLayout(FlowLayout.CENTER));
+		getContentPane().add(buttonPane, BorderLayout.SOUTH);
+
+		JButton btnCopy = new JButton("Copy");
+		btnCopy.addActionListener(e -> {
+			final var clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+			clipboard.setContents(new StringSelection(uuid.toString()), null);
+		});
+		buttonPane.add(btnCopy);
+		getRootPane().setDefaultButton(btnCopy);
+
+		JButton btnClose = new JButton("Close");
+		btnClose.addActionListener(e -> dispose());
+		buttonPane.add(btnClose);
+
 	}
 
 }
