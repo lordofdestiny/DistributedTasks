@@ -1,9 +1,10 @@
 package rs.ac.bg.etf.kdp.linda;
 
-import rs.ac.bg.etf.kdp.Linda;
+import java.util.ArrayList;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
-import java.util.*;
-import java.util.stream.*;
+import rs.ac.bg.etf.kdp.Linda;
 
 public class LocalLinda implements Linda {
     final ArrayList<String[]> tupleSpace = new ArrayList<>();
