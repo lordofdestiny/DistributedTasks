@@ -7,7 +7,11 @@ import java.util.stream.Stream;
 import rs.ac.bg.etf.kdp.Linda;
 
 public class LocalLinda implements Linda {
-    final ArrayList<String[]> tupleSpace = new ArrayList<>();
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	final ArrayList<String[]> tupleSpace = new ArrayList<>();
 
     public void eval(String name, Runnable thread) {
         Thread t = new Thread(thread, name);
