@@ -1,12 +1,17 @@
 package rs.ac.bg.etf.kdp.linda;
 
+import java.util.ArrayList;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
 import rs.ac.bg.etf.kdp.Linda;
 
-import java.util.*;
-import java.util.stream.*;
-
 public class LocalLinda implements Linda {
-    final ArrayList<String[]> tupleSpace = new ArrayList<>();
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	final ArrayList<String[]> tupleSpace = new ArrayList<>();
 
     public void eval(String name, Runnable thread) {
         Thread t = new Thread(thread, name);

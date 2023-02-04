@@ -1,10 +1,10 @@
 package rs.ac.bg.etf.kdp.tests;
 
-import rs.ac.bg.etf.kdp.Linda;
-import rs.ac.bg.etf.kdp.linda.CentralizedLinda;
-
 import java.util.Arrays;
 import java.util.stream.IntStream;
+
+import rs.ac.bg.etf.kdp.Linda;
+import rs.ac.bg.etf.kdp.linda.CentralizedLinda;
 
 public class TestLinda {
     public static final int iterations = 10;

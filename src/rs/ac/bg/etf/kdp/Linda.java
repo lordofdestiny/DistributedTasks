@@ -1,6 +1,6 @@
 package rs.ac.bg.etf.kdp;
 
-import java.io.*;
+import java.io.Serializable;
 
 public interface Linda extends Serializable{
     /**

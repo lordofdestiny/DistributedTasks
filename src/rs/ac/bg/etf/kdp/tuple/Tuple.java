@@ -1,7 +1,7 @@
 package rs.ac.bg.etf.kdp.tuple;
 
-import java.io.*;
-import java.util.*;
+import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.stream.IntStream;
 
 public class Tuple implements Serializable {

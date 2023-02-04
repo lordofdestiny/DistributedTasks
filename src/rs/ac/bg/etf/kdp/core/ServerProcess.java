@@ -1,29 +1,36 @@
 package rs.ac.bg.etf.kdp.core;
 
-import rs.ac.bg.etf.kdp.utils.PropertyLoader;
-
 import java.rmi.RemoteException;
-import java.rmi.registry.*;
-import java.rmi.server.*;
-import java.util.*;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.server.UnicastRemoteObject;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 
-public class CentralServer extends UnicastRemoteObject implements IRMICentralServer {
-    static {
-        try {
-            PropertyLoader.loadConfiguration();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+import rs.ac.bg.etf.kdp.utils.Configuration;
+
+public class ServerProcess
+        extends UnicastRemoteObject
+        implements IServerWorker, IServerClient {
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+
+	static {
+        Configuration.load();
     }
 
     private static class WorkerRecord {
         public UUID id;
-        public IRMIProcessWorker handle;
+        public IWorkerServer handle;
         private boolean online;
 
-        WorkerRecord(UUID id, IRMIProcessWorker worker) {
+        WorkerRecord(UUID id, IWorkerServer worker) {
             this.id = id;
             this.handle = worker;
             this.online = true;
@@ -54,18 +61,16 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
     }
 
     private final Map<UUID, WorkerRecord> registeredWorkers = new ConcurrentHashMap<>();
+    private final Map<UUID, IClientServer> registeredClients = new ConcurrentHashMap<>();
     private final Set<UUID> onlineWorkers = new ConcurrentSkipListSet<>();
-    private static final String SERVER_ROUTE = System.getProperty("server.route");
-    private static final int SERVER_PORT = Integer.parseInt(System.getProperty("server.port"));
-    private static final int SERVER_PING_INTERVAL = Integer.parseInt(System.getProperty("server.pingInterval"));
 
-    public CentralServer() throws RemoteException {
+    public ServerProcess() throws RemoteException {
         super();
         try {
-            final var registry = LocateRegistry.createRegistry(SERVER_PORT);
-            registry.rebind(SERVER_ROUTE, this);
-            System.out.printf("Server started on port %s", SERVER_PORT);
-            CentralServer.setLog(System.out);
+            final var registry = LocateRegistry.createRegistry(Configuration.SERVER_PORT);
+            registry.rebind(Configuration.SERVER_ROUTE, this);
+            System.out.printf("Server started on port %s", Configuration.SERVER_PORT);
+            ServerProcess.setLog(System.out);
         } catch (RemoteException e) {
             System.err.println("Failed to start central server!");
             System.err.println(e.getMessage());
@@ -74,32 +79,52 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
     }
 
     @Override
-    public void registerWorker(UUID id, IRMIProcessWorker worker) throws RemoteException {
+    public void register(UUID id, IWorkerServer worker) throws RemoteException {
         final var record = new WorkerRecord(id, worker);
         registeredWorkers.put(id, record);
         try {
             worker.ping();
-            System.out.printf("Worker %s is online!\n", id);
             record.setOnline();
-        } catch (Exception e) {
+            System.out.printf("Worker %s is online!\n", id);
+        } catch (RuntimeException e) {
             System.err.printf("Worker %s failed and is offline!\n", id);
         }
     }
 
     @Override
+    public void register(UUID id, IClientServer client) throws RemoteException {
+        // Maybe make a client record
+        registeredClients.put(id, client);
+        // Maybe ping the client
+        System.out.printf("Client %s is online!\n", id);
+    }
+
+    @Override
     public void ping(UUID id) throws RemoteException {
-        onlineWorkers.add(id);
-        registeredWorkers.get(id).setOnline();
+        if (registeredWorkers.containsKey(id)) {
+            onlineWorkers.add(id);
+            registeredWorkers.get(id).setOnline();
+        } else if (registeredClients.containsKey(id)) {
+            // Maybe a client
+        } else {
+            throw new UnknownUUIDException();
+        }
+    }
+
+    @Override
+    public void ping() throws RemoteException {
+        // Do nothing
     }
 
     public static void main(String[] args) {
-        CentralServer cs;
+        ServerProcess cs;
         try {
-            cs = new CentralServer();
+            cs = new ServerProcess();
         } catch (RemoteException e) {
             throw new RuntimeException(e);
         }
 
+        // Refactor this to a nicer place
         new Thread(cs::monitorWorkers).start();
     }
 
@@ -111,11 +136,11 @@ public class CentralServer extends UnicastRemoteObject implements IRMICentralSer
                     .map(Thread::new).toArray(Thread[]::new);
             Arrays.stream(threads).forEach(Thread::start);
             try {
-                for (final var thead : threads) {
-                    thead.join();
+                for (final var thread : threads) {
+                    thread.join();
                 }
                 //noinspection BusyWait
-                Thread.sleep(SERVER_PING_INTERVAL);
+                Thread.sleep(Configuration.WORKER_PING_INTERVAL);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
