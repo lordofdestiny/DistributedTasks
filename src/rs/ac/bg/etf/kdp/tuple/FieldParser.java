@@ -3,7 +3,7 @@ package rs.ac.bg.etf.kdp.tuple;
 import java.io.Serializable;
 import java.util.Optional;
 
-public class FieldParser {
+class FieldParser {
     public static Optional<? extends Serializable> parse(String field) {
         if(field == null) return Optional.of("null");
         Optional<? extends Serializable> value;

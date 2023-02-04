@@ -33,7 +33,7 @@ import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo.ConnectionProvider;
 import rs.ac.bg.etf.kdp.utils.ConnectionMonitor;
 
-public class GetConnectionInfo extends JDialog {
+class GetConnectionInfo extends JDialog {
 	/**
 	 * 
 	 */

@@ -23,7 +23,7 @@ import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.border.EmptyBorder;
 
-public class DisplayUUID extends JDialog {
+class DisplayUUID extends JDialog {
 	/**
 	 * 
 	 */

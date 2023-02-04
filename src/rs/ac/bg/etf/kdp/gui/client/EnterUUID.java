@@ -27,7 +27,7 @@ import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.border.EmptyBorder;
 
-public class EnterUUID extends JDialog {
+class EnterUUID extends JDialog {
 
 	/**
 	 * 
