@@ -1,6 +1,6 @@
 package rs.ac.bg.etf.kdp.utils;
 
-import java.lang.reflect.*;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.stream.Stream;
 
