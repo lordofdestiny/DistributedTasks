@@ -28,7 +28,6 @@ import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 
 import rs.ac.bg.etf.kdp.core.IPingable;
-import rs.ac.bg.etf.kdp.core.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo.ConnectionProvider;
