@@ -1,21 +1,25 @@
-package rs.ac.bg.etf.kdp.core;
+package rs.ac.bg.etf.kdp.core.worker;
 
+import java.rmi.NoSuchObjectException;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
+import java.rmi.server.Unreferenced;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.UUID;
 
+import rs.ac.bg.etf.kdp.core.ConnectionMonitor;
+import rs.ac.bg.etf.kdp.core.IServerWorker;
+import rs.ac.bg.etf.kdp.core.IWorkerServer;
+import rs.ac.bg.etf.kdp.core.SessionExpiredException;
 import rs.ac.bg.etf.kdp.gui.client.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
-import rs.ac.bg.etf.kdp.utils.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
-import rs.ac.bg.etf.kdp.utils.UnicastUnexportHook;
 
-public class WorkerProcess implements IWorkerServer {
+public class WorkerProcess implements IWorkerServer, Unreferenced {
 	static {
 		Configuration.load();
 	}
@@ -26,7 +30,7 @@ public class WorkerProcess implements IWorkerServer {
 	private final String host;
 	private final int port;
 	private IServerWorker server = null;
-	private ConnectionMonitor connectionTracker;
+	private ConnectionMonitor monitor;
 
 	public WorkerProcess(String host, int port) {
 		this.host = host;
@@ -36,7 +40,7 @@ public class WorkerProcess implements IWorkerServer {
 
 	@Override
 	public void ping() {
-		if (connectionTracker != null && connectionTracker.connected()) {
+		if (monitor != null && monitor.connected()) {
 			System.out.printf("[%s]: Ping!\n", now());
 		}
 		try {
@@ -50,19 +54,22 @@ public class WorkerProcess implements IWorkerServer {
 	private boolean connectToServer() {
 		try {
 			final var ci = new ConnectionInfo(host, port);
-			server = ConnectionProvider.connect(ci, IServerWorker.class);			
+			server = ConnectionProvider.connect(ci, IServerWorker.class);
 			UnicastRemoteObject.exportObject(this, 0);
 			server.register(uuid, this);
 		} catch (RemoteException | ServerUnavailableException e) {
 			return false;
+		} catch (SessionExpiredException e) {
+			System.err.println(e.getCause());
+			System.exit(0);
 		}
-		Runtime.getRuntime().addShutdownHook(new UnicastUnexportHook(this));
-		connectionTracker = new ConnectionMonitor(server, Configuration.SERVER_PING_INTERVAL, uuid);
-		connectionTracker.addEventListener(new ConnectionListener() {
+		monitor = new ConnectionMonitor(server, Configuration.WORKER_PING_INTERVAL, uuid);
+		monitor.addEventListener(new ConnectionListener() {
 			@Override
 			public void onConnected() {
 				System.out.println("Connected!!!");
 			}
+
 			@Override
 			public void onPingComplete(long ping) {
 				System.out.printf("[%s]: Ping is %d ms\n", now(), ping);
@@ -89,7 +96,7 @@ public class WorkerProcess implements IWorkerServer {
 				System.exit(0);
 			}
 		});
-		connectionTracker.start();
+		monitor.start();
 		return true;
 	}
 
@@ -102,6 +109,14 @@ public class WorkerProcess implements IWorkerServer {
 		if (!pw.connectToServer()) {
 			System.err.println("Failed to connect to server!");
 			System.exit(0);
+		}
+	}
+
+	@Override
+	public void unreferenced() {
+		try {
+			UnicastRemoteObject.unexportObject(this, true);
+		} catch (NoSuchObjectException e) {
 		}
 	}
 }

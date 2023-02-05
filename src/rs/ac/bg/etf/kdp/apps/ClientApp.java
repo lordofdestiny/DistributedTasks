@@ -2,23 +2,22 @@ package rs.ac.bg.etf.kdp.apps;
 
 import java.awt.EventQueue;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.UUID;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 import javax.swing.filechooser.FileSystemView;
 
-import rs.ac.bg.etf.kdp.core.ClientProcess;
+import rs.ac.bg.etf.kdp.core.client.ClientProcess;
 import rs.ac.bg.etf.kdp.gui.client.ClientAppFrame;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
-import rs.ac.bg.etf.kdp.utils.JobRequestDescriptor;
+import rs.ac.bg.etf.kdp.utils.FileUploader.UploadingListener;
+import rs.ac.bg.etf.kdp.utils.JobDescriptorIOOperations.TemporaryFiles;
+import rs.ac.bg.etf.kdp.utils.JobDescriptorIOOperations;
 
 public class ClientApp {
 	static {
@@ -71,64 +70,82 @@ public class ClientApp {
 					System.exit(0);
 				}
 			});
-			
+
 			if (process.connectToServer(listeners)) {
 				System.out.println("Connected!");
-			}else {
+			} else {
 				System.err.println("Failed to connect to server!");
 				System.exit(0);
 			}
 		});
 		frame.setJobDescriptorListener((job) -> {
 			try {
-				Path[] results = createTempZipFromDescriptor(job);
-				// create transfer listener
-				process.sendJob(results[0], null);
+				final var prefix = "linda_job-";
+
+				final var homeDir = FileSystemView.getFileSystemView().getHomeDirectory().toPath();
+				final var temp = frame.tempOnDesktop() ? Files.createTempDirectory(homeDir, prefix)
+						: Files.createTempDirectory(prefix);
+
+				TemporaryFiles results = JobDescriptorIOOperations.createTempZip(job, temp);
+
+				process.submitJob(results.getZip(), new UploadingListener() {
+					long bytesUploaded = 0;
+					long totalSize = 0;
+					{
+						try {
+							totalSize = Files.size(results.getZip().toPath());
+						} catch (IOException ignore) {
+						}
+						frame.setFileSizeText(String.format("%.2fKB", totalSize / 1024.0));
+					}
+
+					@Override
+					public void onBytesUploaded(int bytes) {
+						bytesUploaded += bytes;
+						frame.setTransferedSize(String.format("%dB", bytesUploaded));
+						if (totalSize != 0) {
+							frame.setProgressBar((int) (bytesUploaded * 100.0 / totalSize));
+						}
+					}
+
+					@Override
+					public void onDeadlineExceeded() {
+						frame.promptTransferFailed("Time limit exceeded! Check your connection");
+						try {
+							Files.walk(results.getDirectory()).sorted(Comparator.reverseOrder())
+									.map(Path::toFile).forEach(File::delete);
+						} catch (IOException e) {
+							System.err.println("Failed to cleanup after failed job transfer");
+						}
+					}
+
+					@Override
+					public void onIOException() {
+						frame.promptTransferFailed(
+								"Files could not be read from disk. Try saving them on desktop!");
+					}
+
+					@Override
+					public void onUploadComplete(long bytes) {
+						try {
+							Files.walk(results.getDirectory()).sorted(Comparator.reverseOrder())
+									.map(Path::toFile).forEach(File::delete);
+						} catch (IOException e) {
+							System.err.println("Failed to cleanup after failed job transfer");
+						}
+						frame.promptTransferCompleteSucessfully();
+					}
+
+					@Override
+					public void onFailedConnection() {
+						frame.promptTransferFailed("Server is not available! Try later!");
+					}
+				});
 			} catch (IOException e) {
 				frame.showErrorToClient("Error",
 						"Failed during creation of temporary files. Try setting temporary directory.");
 			}
 		});
-	}
-
-	private void deleteTempDirectory(Path dir) throws IOException {
-		for (final var file : dir.toFile().listFiles()) {
-			file.delete();
-		}
-		Files.delete(dir);
-	}
-
-	private Path[] createTempZipFromDescriptor(JobRequestDescriptor jrd) throws IOException {
-		final var prefix = "linda_job-";
-
-		final var temp = frame.tempOnDesktop()
-				? Files.createTempDirectory(FileSystemView.getFileSystemView().getHomeDirectory().toPath(), prefix)
-				: Files.createTempDirectory(prefix);
-
-		System.out.println(temp.toString());// debugging
-
-		final var copyPaths = JobRequestDescriptor.copyFilesToPath(temp, jrd);
-
-		final var zipFile = new File(temp.toFile(), "job.zip");
-
-		try (final var fos = new FileOutputStream(zipFile); final var zipOut = new ZipOutputStream(fos)) {
-			for (final var path : copyPaths) {
-				final var file = path.toFile();
-				try (final var fis = new FileInputStream(file)) {
-					final var entry = new ZipEntry(file.getName());
-					zipOut.putNextEntry(entry);
-
-					final var bytes = new byte[1024];
-					int length;
-					while ((length = fis.read(bytes)) >= 0) {
-						zipOut.write(bytes, 0, length);
-					}
-				}
-			}
-		} catch (IOException e) {
-			deleteTempDirectory(temp);
-		}
-		return new Path[] { zipFile.toPath(), temp };
 	}
 
 	public static void main(String[] args) {

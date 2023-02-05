@@ -1,22 +1,27 @@
-package rs.ac.bg.etf.kdp.core;
+package rs.ac.bg.etf.kdp.core.client;
 
-import java.nio.file.Path;
+import java.io.File;
+import java.rmi.NoSuchObjectException;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
+import java.rmi.server.Unreferenced;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import rs.ac.bg.etf.kdp.core.ConnectionMonitor;
+import rs.ac.bg.etf.kdp.core.IClientServer;
+import rs.ac.bg.etf.kdp.core.IServerClient;
 import rs.ac.bg.etf.kdp.gui.client.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
-import rs.ac.bg.etf.kdp.utils.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
-import rs.ac.bg.etf.kdp.utils.TransferListener;
-import rs.ac.bg.etf.kdp.utils.UnicastUnexportHook;
+import rs.ac.bg.etf.kdp.utils.FileUploadHandle;
+import rs.ac.bg.etf.kdp.utils.FileUploader;
+import rs.ac.bg.etf.kdp.utils.FileUploader.UploadingListener;
 
-public class ClientProcess implements IClientServer {
+public class ClientProcess implements IClientServer, Unreferenced {
 	private ConnectionMonitor monitor = null;
 	private final ConnectionInfo conectionInfo;
 	private final UUID uuid;
@@ -39,7 +44,6 @@ public class ClientProcess implements IClientServer {
 		} catch (RemoteException | ServerUnavailableException e) {
 			return false;
 		}
-		Runtime.getRuntime().addShutdownHook(new UnicastUnexportHook(this));
 		monitor = new ConnectionMonitor(server, 5000, uuid);
 		if (listeners != null) {
 			listeners.forEach(monitor::addEventListener);
@@ -52,22 +56,15 @@ public class ClientProcess implements IClientServer {
 		return monitor;
 	}
 
-	public void sendJob(Path zipFile, TransferListener cb) {
-		
-	}
-
-	@SuppressWarnings("unused")
-	private class JobSender extends Thread {
-		public JobSender(Path zip, TransferListener cb) {
-
+	public void submitJob(File zipFile, UploadingListener cb) {
+		FileUploadHandle handle = null;
+		try {
+			handle = server.registerJob(ClientProcess.this.uuid);
+		} catch (RemoteException e) {
+			cb.onFailedConnection();
 		}
-
-		@Override
-		public void run() {
-			// ask server to register a new job
-			// send job to server
-
-		}
+		FileUploader uploader = new FileUploader(handle, zipFile, cb);
+		uploader.start();
 	}
 
 	public static void main(String[] args) {
@@ -109,6 +106,14 @@ public class ClientProcess implements IClientServer {
 		if (!cp.connectToServer(listeners)) {
 			System.err.println("Failed to connect to server!");
 			System.exit(0);
+		}
+	}
+
+	@Override
+	public void unreferenced() {
+		try {
+			UnicastRemoteObject.unexportObject(this, true);
+		} catch (NoSuchObjectException e) {
 		}
 	}
 }

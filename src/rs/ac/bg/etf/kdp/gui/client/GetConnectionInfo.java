@@ -15,7 +15,9 @@ import java.awt.event.KeyEvent;
 import java.text.NumberFormat;
 import java.text.ParsePosition;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import javax.swing.Box;
 import javax.swing.JButton;
@@ -27,10 +29,8 @@ import javax.swing.JTextField;
 import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 
-import rs.ac.bg.etf.kdp.core.IPingable;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
-import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
 
 class GetConnectionInfo extends JDialog {
 	/**
@@ -53,6 +53,8 @@ class GetConnectionInfo extends JDialog {
 			public void run() {
 				try {
 					GetConnectionInfo dialog = new GetConnectionInfo(null, (info) -> {
+					}, (info) -> {
+						return Math.random() < 0.5 ? Optional.of(1L) : Optional.empty();
 					}, () -> {
 					});
 					dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
@@ -68,15 +70,17 @@ class GetConnectionInfo extends JDialog {
 	ActionListener invokeBtnVerify = null;
 
 	private Consumer<ConnectionInfo> infoReady = null;
+	private Function<ConnectionInfo, Optional<Long>> getPing = null;
 
 	/**
 	 * Create the dialog.
 	 */
-	public GetConnectionInfo(JFrame owner, Consumer<ConnectionInfo> infoReady, Runnable connected) {
+	public GetConnectionInfo(JFrame owner, Consumer<ConnectionInfo> infoReady,
+			Function<ConnectionInfo, Optional<Long>> getPing, Runnable connected) {
 		super(owner);
-		Objects.requireNonNull(infoReady);
+		this.getPing = Objects.requireNonNull(getPing);
+		this.infoReady = Objects.requireNonNull(infoReady);
 		Objects.requireNonNull(connected);
-		this.infoReady = infoReady;
 		setResizable(false);
 		setModal(true);
 		setTitle("Connection parameters");
@@ -206,33 +210,30 @@ class GetConnectionInfo extends JDialog {
 		final var ip = txtIP.getText();
 		final var portText = txtPort.getText();
 		if (ip.isBlank()) {
-			showMessageDialog(GetConnectionInfo.this, "Please provide server IP address!", "No IP", ERROR_MESSAGE);
-			return;
-		}
-		if (portText.isBlank()) {
-			showMessageDialog(GetConnectionInfo.this, "Please provide server port!", "No Port", ERROR_MESSAGE);
-			return;
-		}
-		if (!ip.matches(ipRegex) && !ip.equals("localhost")) {
-			showMessageDialog(GetConnectionInfo.this, "Please provide a valid IP address!", "No Invalid",
+			showMessageDialog(GetConnectionInfo.this, "Please provide server IP address!", "No IP",
 					ERROR_MESSAGE);
 			return;
 		}
+		if (portText.isBlank()) {
+			showMessageDialog(GetConnectionInfo.this, "Please provide server port!", "No Port",
+					ERROR_MESSAGE);
+			return;
+		}
+		if (!ip.matches(ipRegex) && !ip.equals("localhost")) {
+			showMessageDialog(GetConnectionInfo.this, "Please provide a valid IP address!",
+					"No Invalid", ERROR_MESSAGE);
+			return;
+		}
 		if (!isNumeric(portText) || !isValidPort(portText)) {
-			showMessageDialog(GetConnectionInfo.this, "Please provide a valid port!", "No Invalid", ERROR_MESSAGE);
+			showMessageDialog(GetConnectionInfo.this, "Please provide a valid port!", "No Invalid",
+					ERROR_MESSAGE);
 			return;
 		}
 		int port = Integer.valueOf(txtPort.getText());
-		final var info = new ConnectionInfo(ip, port);
-		IPingable server = null;
-		try {
-			server = ConnectionProvider.connect(info, IPingable.class);
-		} catch (ServerUnavailableException e1) {
-			showConnectionFailed();
-			return;
-		}
 
-		server.getPing().ifPresentOrElse((ping) -> {
+		final var info = new ConnectionInfo(ip, port);
+
+		getPing.apply(info).ifPresentOrElse((ping) -> {
 			showConnectionSuccessful(info, ping);
 			infoReady.accept(info);
 			setFinalState();
@@ -245,7 +246,8 @@ class GetConnectionInfo extends JDialog {
 		message.append("Server available at ");
 		message.append(info.getIp()).append(':').append(info.getPort());
 		message.append(".\nPing: ").append(ping).append(" ms");
-		showMessageDialog(GetConnectionInfo.this, message.toString(), "Connected!", INFORMATION_MESSAGE);
+		showMessageDialog(GetConnectionInfo.this, message.toString(), "Connected!",
+				INFORMATION_MESSAGE);
 	}
 
 	private void setFinalState() {
@@ -256,6 +258,7 @@ class GetConnectionInfo extends JDialog {
 	}
 
 	private void showConnectionFailed() {
-		showMessageDialog(GetConnectionInfo.this, "Failed to connect to the server!", "No connection", ERROR_MESSAGE);
+		showMessageDialog(GetConnectionInfo.this, "Failed to connect to the server!",
+				"No connection", ERROR_MESSAGE);
 	}
 }

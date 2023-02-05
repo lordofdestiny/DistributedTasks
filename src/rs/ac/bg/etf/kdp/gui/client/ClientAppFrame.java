@@ -2,7 +2,9 @@ package rs.ac.bg.etf.kdp.gui.client;
 
 import static javax.swing.JOptionPane.ERROR_MESSAGE;
 import static javax.swing.JOptionPane.WARNING_MESSAGE;
+import static javax.swing.JOptionPane.PLAIN_MESSAGE;
 import static javax.swing.JOptionPane.YES_NO_OPTION;
+import static javax.swing.JOptionPane.YES_OPTION;
 import static javax.swing.JOptionPane.showConfirmDialog;
 import static javax.swing.JOptionPane.showMessageDialog;
 
@@ -61,11 +63,16 @@ import javax.swing.table.DefaultTableModel;
 import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
 
+import rs.ac.bg.etf.kdp.core.IPingable;
+import rs.ac.bg.etf.kdp.utils.JobDescriptorIOOperations;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
+import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
 import rs.ac.bg.etf.kdp.utils.JarVerificator;
-import rs.ac.bg.etf.kdp.utils.JobRequestDescriptor;
-import rs.ac.bg.etf.kdp.utils.JobRequestDescriptor.JobCreationException;
+import rs.ac.bg.etf.kdp.utils.JobDescriptor;
+import rs.ac.bg.etf.kdp.utils.JobDescriptorValidator;
+import rs.ac.bg.etf.kdp.utils.JobDescriptor.JobCreationException;
+import javax.swing.JProgressBar;
 
 public class ClientAppFrame extends JFrame {
 	/**
@@ -117,7 +124,7 @@ public class ClientAppFrame extends JFrame {
 	};
 	private Runnable connectReady = () -> {
 	};
-	private Consumer<JobRequestDescriptor> jobReady = (job) -> {
+	private Consumer<JobDescriptor> jobReady = (job) -> {
 	};
 
 	public void setUUIDReadyListener(Consumer<UUID> listener) {
@@ -132,11 +139,10 @@ public class ClientAppFrame extends JFrame {
 		connectReady = Objects.requireNonNull(listener);
 	}
 
-	public void setJobDescriptorListener(Consumer<JobRequestDescriptor> listener) {
+	public void setJobDescriptorListener(Consumer<JobDescriptor> listener) {
 		jobReady = Objects.requireNonNull(listener);
 	}
 
-	private JMenuItem mntmShowPing;
 	private JPanel panelPing;
 	private JLabel lblPingValue;
 	private JLabel lblConnectionStatus;
@@ -159,8 +165,7 @@ public class ClientAppFrame extends JFrame {
 	private JFileChooser chooser;
 	private FileNameExtensionFilter jsonFilter;
 
-	private boolean pingShown = false;
-	private JobRequestDescriptor jobDescriptor = null;
+	private JobDescriptor jobDescriptor = null;
 	private Map<Component, Boolean> jobPanelHistory = null;
 
 	/**
@@ -168,7 +173,7 @@ public class ClientAppFrame extends JFrame {
 	 */
 	private void initialize() {
 		setTitle("Client");
-		setBounds(100, 100, 500, 450);
+		setBounds(100, 100, 500, 550);
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
 		JMenuBar menuBar = new JMenuBar();
@@ -195,20 +200,6 @@ public class ClientAppFrame extends JFrame {
 		mntmConnect.setEnabled(false);
 		mnConnection.add(mntmConnect);
 
-		mntmShowPing = new JMenuItem("Show ping");
-		mntmShowPing.addActionListener((e) -> {
-			if (pingShown) {
-				panelPing.setVisible(false);
-				mntmShowPing.setText("Show ping");
-			} else {
-				panelPing.setVisible(true);
-				mntmShowPing.setText("Hide ping");
-			}
-
-		});
-		mntmShowPing.setEnabled(false);
-		mnConnection.add(mntmShowPing);
-
 		Component horizontalGlue = Box.createHorizontalGlue();
 		menuBar.add(horizontalGlue);
 		getContentPane().setLayout(new BorderLayout(0, 0));
@@ -225,10 +216,10 @@ public class ClientAppFrame extends JFrame {
 		GridBagLayout gbl_panelPing = new GridBagLayout();
 		gbl_panelPing.columnWidths = new int[] { 0, 116, 222, 29, 31, 0, 30, 0 };
 		gbl_panelPing.rowHeights = new int[] { 25, 0 };
-		gbl_panelPing.columnWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, Double.MIN_VALUE };
+		gbl_panelPing.columnWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+				Double.MIN_VALUE };
 		gbl_panelPing.rowWeights = new double[] { 0.0, Double.MIN_VALUE };
 		panelPing.setLayout(gbl_panelPing);
-		panelPing.setVisible(false);
 
 		Component horizontalStrut_1 = Box.createHorizontalStrut(20);
 		GridBagConstraints gbc_horizontalStrut_1 = new GridBagConstraints();
@@ -295,12 +286,13 @@ public class ClientAppFrame extends JFrame {
 		panelNewJob = new JPanel();
 		tabbedPane.addTab("Submit job", null, panelNewJob, null);
 		GridBagLayout gbl_panelNewJob = new GridBagLayout();
-		gbl_panelNewJob.columnWidths = new int[] { 0, 0, 0, 0, 0, 27, 0, 0, 0, 0, 0, 0 };
-		gbl_panelNewJob.rowHeights = new int[] { 20, 0, 25, 25, 25, 0, 0, 25, 0, 25, 25, 0, 0, 0 };
-		gbl_panelNewJob.columnWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-				Double.MIN_VALUE };
-		gbl_panelNewJob.rowWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-				Double.MIN_VALUE };
+		gbl_panelNewJob.columnWidths = new int[] { 0, 0, 0, 0, 183, 27, 0, 0, 0, 0, 0, 0 };
+		gbl_panelNewJob.rowHeights = new int[] { 25, 25, 30, 30, 25, 25, 25, 0, 0, 30, 30, 14, 25,
+				25, 15, 0 };
+		gbl_panelNewJob.columnWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0,
+				0.0, 0.0, Double.MIN_VALUE };
+		gbl_panelNewJob.rowWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0, 0.0, 0.0, Double.MIN_VALUE };
 		panelNewJob.setLayout(gbl_panelNewJob);
 
 		Component verticalGlue_1 = Box.createVerticalGlue();
@@ -401,7 +393,7 @@ public class ClientAppFrame extends JFrame {
 
 		Component horizontalStrut_8 = Box.createHorizontalStrut(20);
 		GridBagConstraints gbc_horizontalStrut_8 = new GridBagConstraints();
-		gbc_horizontalStrut_8.gridheight = 7;
+		gbc_horizontalStrut_8.gridheight = 8;
 		gbc_horizontalStrut_8.insets = new Insets(0, 0, 5, 0);
 		gbc_horizontalStrut_8.gridx = 10;
 		gbc_horizontalStrut_8.gridy = 3;
@@ -446,18 +438,18 @@ public class ClientAppFrame extends JFrame {
 		panelNewJob.add(btnClearConfig, gbc_btnClearConfig);
 
 		JLabel lblArguments = new JLabel("Arguments");
-		GridBagConstraints gbc_lblNewLabel = new GridBagConstraints();
-		gbc_lblNewLabel.anchor = GridBagConstraints.NORTH;
-		gbc_lblNewLabel.gridwidth = 3;
-		gbc_lblNewLabel.insets = new Insets(0, 0, 5, 5);
-		gbc_lblNewLabel.gridx = 1;
-		gbc_lblNewLabel.gridy = 5;
-		panelNewJob.add(lblArguments, gbc_lblNewLabel);
+		GridBagConstraints gbc_lblArguments = new GridBagConstraints();
+		gbc_lblArguments.anchor = GridBagConstraints.NORTH;
+		gbc_lblArguments.gridwidth = 3;
+		gbc_lblArguments.insets = new Insets(0, 0, 5, 5);
+		gbc_lblArguments.gridx = 1;
+		gbc_lblArguments.gridy = 5;
+		panelNewJob.add(lblArguments, gbc_lblArguments);
 
 		txtAreaArguments = new JTextArea();
 		txtAreaArguments.setDisabledTextColor(Color.BLACK);
-		txtAreaArguments
-				.setBorder(new CompoundBorder(new LineBorder(new Color(171, 173, 179)), new EmptyBorder(5, 5, 5, 5)));
+		txtAreaArguments.setBorder(new CompoundBorder(new LineBorder(new Color(171, 173, 179)),
+				new EmptyBorder(5, 5, 5, 5)));
 		txtAreaArguments.setLineWrap(true);
 		txtAreaArguments.setWrapStyleWord(true);
 		GridBagConstraints gbc_txtAreaArguments = new GridBagConstraints();
@@ -480,11 +472,19 @@ public class ClientAppFrame extends JFrame {
 		gbc_btnSaveConfig.gridy = 5;
 		panelNewJob.add(btnSaveConfig, gbc_btnSaveConfig);
 
+		tglBtnTemp = new JToggleButton("Temp on Desktop");
+		GridBagConstraints gbc_tglBtnTemp = new GridBagConstraints();
+		gbc_tglBtnTemp.fill = GridBagConstraints.HORIZONTAL;
+		gbc_tglBtnTemp.gridwidth = 4;
+		gbc_tglBtnTemp.insets = new Insets(0, 0, 5, 5);
+		gbc_tglBtnTemp.gridx = 6;
+		gbc_tglBtnTemp.gridy = 6;
+		panelNewJob.add(tglBtnTemp, gbc_tglBtnTemp);
+
 		btnSubmit = new JButton("Submit");
 		btnSubmit.setEnabled(false);
 		btnSubmit.addActionListener((e) -> {
 			inputsSetEnabled(true);
-			clearNewJobFields();
 			jobReady.accept(jobDescriptor);
 			jobDescriptor = null;
 		});
@@ -494,28 +494,19 @@ public class ClientAppFrame extends JFrame {
 		gbc_btnSubmit.gridwidth = 4;
 		gbc_btnSubmit.insets = new Insets(0, 0, 5, 5);
 		gbc_btnSubmit.gridx = 6;
-		gbc_btnSubmit.gridy = 6;
+		gbc_btnSubmit.gridy = 7;
 		panelNewJob.add(btnSubmit, gbc_btnSubmit);
 
-		tglBtnTemp = new JToggleButton("Temp on Desktop");
-		GridBagConstraints gbc_tglBtnTemp = new GridBagConstraints();
-		gbc_tglBtnTemp.fill = GridBagConstraints.HORIZONTAL;
-		gbc_tglBtnTemp.gridwidth = 4;
-		gbc_tglBtnTemp.insets = new Insets(0, 0, 5, 5);
-		gbc_tglBtnTemp.gridx = 6;
-		gbc_tglBtnTemp.gridy = 7;
-		panelNewJob.add(tglBtnTemp, gbc_tglBtnTemp);
-
-		Component verticalStrut_1 = Box.createVerticalStrut(20);
-		GridBagConstraints gbc_verticalStrut_1 = new GridBagConstraints();
-		gbc_verticalStrut_1.insets = new Insets(0, 0, 5, 5);
-		gbc_verticalStrut_1.gridx = 4;
-		gbc_verticalStrut_1.gridy = 8;
-		panelNewJob.add(verticalStrut_1, gbc_verticalStrut_1);
+		Component verticalStrut = Box.createVerticalStrut(20);
+		GridBagConstraints gbc_verticalStrut = new GridBagConstraints();
+		gbc_verticalStrut.insets = new Insets(0, 0, 5, 5);
+		gbc_verticalStrut.gridx = 4;
+		gbc_verticalStrut.gridy = 8;
+		panelNewJob.add(verticalStrut, gbc_verticalStrut);
 
 		JLabel lblNewLabel_1 = new JLabel("IN Files");
 		GridBagConstraints gbc_lblNewLabel_1 = new GridBagConstraints();
-		gbc_lblNewLabel_1.anchor = GridBagConstraints.WEST;
+		gbc_lblNewLabel_1.anchor = GridBagConstraints.NORTHWEST;
 		gbc_lblNewLabel_1.gridwidth = 3;
 		gbc_lblNewLabel_1.insets = new Insets(0, 0, 5, 5);
 		gbc_lblNewLabel_1.gridx = 1;
@@ -526,8 +517,9 @@ public class ClientAppFrame extends JFrame {
 		tableInFiles.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		tableInFiles.setBorder(UIManager.getBorder("TextField.border"));
 		tableInFiles.setFont(new Font("Tahoma", Font.PLAIN, 12));
-		tableInFiles.setModel(new DefaultTableModel(new Object[][] { { null, null, null }, { null, null, null }, },
-				new String[] { "New column", "New column", "New column" }));
+		tableInFiles.setModel(new DefaultTableModel(
+				new Object[][] { { null, null }, { null, null }, { null, null }, },
+				new String[] { "New column", "New column" }));
 		GridBagConstraints gbc_tableInFiles = new GridBagConstraints();
 		gbc_tableInFiles.gridwidth = 6;
 		gbc_tableInFiles.insets = new Insets(0, 0, 5, 5);
@@ -536,9 +528,11 @@ public class ClientAppFrame extends JFrame {
 		gbc_tableInFiles.gridy = 9;
 		panelNewJob.add(tableInFiles, gbc_tableInFiles);
 
+		jobPanelHistory = setEnabled(panelNewJob, false);
+
 		JLabel lblNewLabel_2 = new JLabel("OUT Files");
 		GridBagConstraints gbc_lblNewLabel_2 = new GridBagConstraints();
-		gbc_lblNewLabel_2.anchor = GridBagConstraints.WEST;
+		gbc_lblNewLabel_2.anchor = GridBagConstraints.NORTHWEST;
 		gbc_lblNewLabel_2.gridwidth = 3;
 		gbc_lblNewLabel_2.insets = new Insets(0, 0, 5, 5);
 		gbc_lblNewLabel_2.gridx = 1;
@@ -547,8 +541,9 @@ public class ClientAppFrame extends JFrame {
 
 		tableOutFiles = new JTable();
 		tableOutFiles.setBorder(UIManager.getBorder("TextField.border"));
-		tableOutFiles.setModel(new DefaultTableModel(new Object[][] { { null, null, null }, { null, null, null }, },
-				new String[] { "New colqumn", "New column", "New column" }));
+		tableOutFiles.setModel(new DefaultTableModel(
+				new Object[][] { { null, null }, { null, null }, { null, null }, },
+				new String[] { "New colqumn", "New column" }));
 		tableOutFiles.setFont(new Font("Tahoma", Font.PLAIN, 12));
 		GridBagConstraints gbc_tableOutFiles = new GridBagConstraints();
 		gbc_tableOutFiles.gridwidth = 6;
@@ -558,21 +553,80 @@ public class ClientAppFrame extends JFrame {
 		gbc_tableOutFiles.gridy = 10;
 		panelNewJob.add(tableOutFiles, gbc_tableOutFiles);
 
-		Component verticalStrut = Box.createVerticalStrut(20);
-		GridBagConstraints gbc_verticalStrut = new GridBagConstraints();
-		gbc_verticalStrut.insets = new Insets(0, 0, 5, 5);
-		gbc_verticalStrut.gridx = 4;
-		gbc_verticalStrut.gridy = 11;
-		panelNewJob.add(verticalStrut, gbc_verticalStrut);
+		JSeparator separator_1 = new JSeparator();
+		GridBagConstraints gbc_separator_1 = new GridBagConstraints();
+		gbc_separator_1.fill = GridBagConstraints.BOTH;
+		gbc_separator_1.gridwidth = 9;
+		gbc_separator_1.insets = new Insets(0, 0, 5, 5);
+		gbc_separator_1.gridx = 1;
+		gbc_separator_1.gridy = 11;
+		panelNewJob.add(separator_1, gbc_separator_1);
 
-		Component verticalGlue = Box.createVerticalGlue();
-		GridBagConstraints gbc_verticalGlue = new GridBagConstraints();
-		gbc_verticalGlue.insets = new Insets(0, 0, 0, 5);
-		gbc_verticalGlue.gridx = 4;
-		gbc_verticalGlue.gridy = 12;
-		panelNewJob.add(verticalGlue, gbc_verticalGlue);
+		JLabel lblProgressText = new JLabel("Upload progress");
+//		GridBagConstraints gbc_lblProgress;
+		gbc_lblProgressText = new GridBagConstraints();
+		gbc_lblProgressText.anchor = GridBagConstraints.WEST;
+		gbc_lblProgressText.gridwidth = 3;
+		gbc_lblProgressText.insets = new Insets(0, 0, 5, 5);
+		gbc_lblProgressText.gridx = 2;
+		gbc_lblProgressText.gridy = 12;
+		panelNewJob.add(lblProgressText, gbc_lblProgressText);
+
+		JLabel lblFileSize = new JLabel("File Size: ");
+		GridBagConstraints gbc_lblFileSize = new GridBagConstraints();
+		gbc_lblFileSize.anchor = GridBagConstraints.WEST;
+		gbc_lblFileSize.insets = new Insets(0, 0, 5, 5);
+		gbc_lblFileSize.gridx = 6;
+		gbc_lblFileSize.gridy = 12;
+		panelNewJob.add(lblFileSize, gbc_lblFileSize);
+
+		lblFileSizeValue = new JLabel("???");
+		GridBagConstraints gbc_lblFileSizeValue = new GridBagConstraints();
+		gbc_lblFileSizeValue.gridwidth = 3;
+		gbc_lblFileSizeValue.insets = new Insets(0, 0, 5, 5);
+		gbc_lblFileSizeValue.gridx = 7;
+		gbc_lblFileSizeValue.gridy = 12;
+		panelNewJob.add(lblFileSizeValue, gbc_lblFileSizeValue);
+
+		uploadProgressBar = new JProgressBar();
+		GridBagConstraints gbc_uploadProgressBar = new GridBagConstraints();
+		gbc_uploadProgressBar.gridwidth = 3;
+		gbc_uploadProgressBar.fill = GridBagConstraints.BOTH;
+		gbc_uploadProgressBar.insets = new Insets(0, 0, 5, 5);
+		gbc_uploadProgressBar.gridx = 2;
+		gbc_uploadProgressBar.gridy = 13;
+		panelNewJob.add(uploadProgressBar, gbc_uploadProgressBar);
+
+		JLabel lblTransfered = new JLabel("Transfered:");
+		GridBagConstraints gbc_lblTransfered = new GridBagConstraints();
+		gbc_lblTransfered.anchor = GridBagConstraints.WEST;
+		gbc_lblTransfered.insets = new Insets(0, 0, 5, 5);
+		gbc_lblTransfered.gridx = 6;
+		gbc_lblTransfered.gridy = 13;
+		panelNewJob.add(lblTransfered, gbc_lblTransfered);
+
+		lblSizeTransfered = new JLabel("0B");
+		GridBagConstraints gbc_lblSizeTransfered = new GridBagConstraints();
+		gbc_lblSizeTransfered.gridwidth = 3;
+		gbc_lblSizeTransfered.insets = new Insets(0, 0, 5, 5);
+		gbc_lblSizeTransfered.gridx = 7;
+		gbc_lblSizeTransfered.gridy = 13;
+		panelNewJob.add(lblSizeTransfered, gbc_lblSizeTransfered);
+
+		Component horizontalStrut_4 = Box.createHorizontalStrut(20);
+		GridBagConstraints gbc_horizontalStrut_4 = new GridBagConstraints();
+		gbc_horizontalStrut_4.insets = new Insets(0, 0, 0, 5);
+		gbc_horizontalStrut_4.gridx = 4;
+		gbc_horizontalStrut_4.gridy = 14;
+		panelNewJob.add(horizontalStrut_4, gbc_horizontalStrut_4);
 		JPanel panel2 = new JPanel();
 		tabbedPane.addTab("New tab", null, panel2, null);
+		GridBagLayout gbl_panel2 = new GridBagLayout();
+		gbl_panel2.columnWidths = new int[] { 0 };
+		gbl_panel2.rowHeights = new int[] { 0 };
+		gbl_panel2.columnWeights = new double[] { Double.MIN_VALUE };
+		gbl_panel2.rowWeights = new double[] { Double.MIN_VALUE };
+		panel2.setLayout(gbl_panel2);
 
 		mntmGenerate.addActionListener(e -> {
 			if (clientUUID.get() != null) {
@@ -596,8 +650,6 @@ public class ClientAppFrame extends JFrame {
 				moveUItoConnectionStage();
 			});
 		});
-
-		jobPanelHistory = setEnabled(panelNewJob, false);
 	}
 
 	private void moveUItoConnectionStage() {
@@ -670,6 +722,10 @@ public class ClientAppFrame extends JFrame {
 		}
 	};
 	private JToggleButton tglBtnTemp;
+	private GridBagConstraints gbc_lblProgressText;
+	private JProgressBar uploadProgressBar;
+	private JLabel lblFileSizeValue;
+	private JLabel lblSizeTransfered;
 
 	public ConnectionListener getConnectionListener() {
 		return connectionListener;
@@ -683,7 +739,7 @@ public class ClientAppFrame extends JFrame {
 			return;
 		File selectedFile = chooser.getSelectedFile();
 		try {
-			final var jd = JobRequestDescriptor.parse(selectedFile);
+			final var jd = JobDescriptor.parse(selectedFile);
 			if (!verifyLoadedConfig(jd)) {
 				return;
 			}
@@ -694,9 +750,11 @@ public class ClientAppFrame extends JFrame {
 			btnClearConfig.setEnabled(true);
 			inputsSetEnabled(false);
 		} catch (FileNotFoundException e1) {
-			showMessageDialog(ClientAppFrame.this, "Selected file could not be read", "File error", ERROR_MESSAGE);
+			showMessageDialog(ClientAppFrame.this, "Selected file could not be read", "File error",
+					ERROR_MESSAGE);
 		} catch (JobCreationException | JsonSyntaxException | JsonIOException e2) {
-			showMessageDialog(ClientAppFrame.this, "Bad JSON format.", "File format error", ERROR_MESSAGE);
+			showMessageDialog(ClientAppFrame.this, "Bad JSON format.", "File format error",
+					ERROR_MESSAGE);
 		}
 	}
 
@@ -716,8 +774,8 @@ public class ClientAppFrame extends JFrame {
 		String defaultName = jobDescriptor.getName();
 		String timestampName = String.valueOf(new Date().getTime());
 		String name = defaultName.isBlank() ? timestampName : defaultName;
-		String result = (String) JOptionPane.showInputDialog(ClientAppFrame.this, "Enter file name", "Save",
-				JOptionPane.PLAIN_MESSAGE, null, null, name.concat(".json"));
+		String result = (String) JOptionPane.showInputDialog(ClientAppFrame.this, "Enter file name",
+				"Save", PLAIN_MESSAGE, null, null, name.concat(".json"));
 
 		if (result == null) {
 			return;
@@ -725,14 +783,16 @@ public class ClientAppFrame extends JFrame {
 
 		File location = new File(chooser.getSelectedFile(), result);
 		if (location.exists()) {
-			int yesno = showConfirmDialog(ClientAppFrame.this, "File already exist, overwrite?", "Save", YES_NO_OPTION);
-			if (yesno != JOptionPane.YES_OPTION) {
+			int yesno = showConfirmDialog(ClientAppFrame.this, "File already exist, overwrite?",
+					"Save", YES_NO_OPTION);
+			if (yesno != YES_OPTION) {
 				return;
 			}
 		}
 
-		if (!JobRequestDescriptor.generate(location, jobDescriptor)) {
-			showMessageDialog(ClientAppFrame.this, "Invalid pathname, try again", "ERROR", ERROR_MESSAGE);
+		if (!JobDescriptorIOOperations.generate(location, jobDescriptor)) {
+			showMessageDialog(ClientAppFrame.this, "Invalid pathname, try again", "ERROR",
+					ERROR_MESSAGE);
 			return;
 		}
 		jobDescriptor = null;
@@ -743,27 +803,30 @@ public class ClientAppFrame extends JFrame {
 		clearNewJobFields();
 	}
 
-	private boolean verifyLoadedConfig(JobRequestDescriptor jd) {
-		if (!jd.isFormatValid()) {
+	private boolean verifyLoadedConfig(JobDescriptor jd) {
+		final var jdv = new JobDescriptorValidator(jd);
+		if (!jdv.isValidFormat()) {
 			showMessage(ERROR_MESSAGE, "File format error", "Some required fileds are missing.");
 			return false;
 		}
-		if (!jd.isValidJob()) {
+		if (!jdv.isValidJob()) {
 			showMessage(ERROR_MESSAGE, "Bad JAR file", "JAR file does not exist or is corrupted");
 			return false;
 		}
-		if (!jd.hasClass()) {
-			showMessage(ERROR_MESSAGE, "Bad JAR file", "JAR file does not have requrested .class file");
+		if (!jdv.hasValidMainClass()) {
+			showMessage(ERROR_MESSAGE, "Bad JAR file",
+					"JAR file does not have requrested .class file");
 			return false;
 		}
-		if (!jd.validInFiles()) {
-			showMessage(ERROR_MESSAGE, "File exists error", "Some of the specified files do not exist.");
+		if (!jdv.hasValidFiles()) {
+			showMessage(ERROR_MESSAGE, "File exists error",
+					"Some of the specified files do not exist.");
 			return false;
 		}
 		return true;
 	}
 
-	private Optional<JobRequestDescriptor> verifyCustomConfig() {
+	private Optional<JobDescriptor> verifyCustomConfig() {
 		final var jarName = txtJAR.getText();
 		if (jarName.isBlank()) {
 			showMessage(WARNING_MESSAGE, "Bad input", "JAR file path can't be empty");
@@ -784,11 +847,12 @@ public class ClientAppFrame extends JFrame {
 		}
 		String className = txtClassName.getText();
 		if (!JarVerificator.hasClass(jarFile, className)) {
-			showMessage(WARNING_MESSAGE, "Bad input", "Class does not exist in the provided JAR file");
+			showMessage(WARNING_MESSAGE, "Bad input",
+					"Class does not exist in the provided JAR file");
 			return Optional.empty();
 		}
 		for (int i = 0; i < 6; i++) {
-			final var path = (String) tableInFiles.getValueAt(i / 3, i % 3);
+			final var path = (String) tableInFiles.getValueAt(i / 2, i % 2);
 			if (path == null || path.isBlank())
 				continue;
 			File file;
@@ -800,8 +864,9 @@ public class ClientAppFrame extends JFrame {
 		}
 
 		try {
-			JobRequestDescriptor jd = new JobRequestDescriptor(txtJobName.getText(), jarFile, className,
-					txtAreaArguments.getText(), getFileNames(tableInFiles), getFileNames(tableOutFiles));
+			JobDescriptor jd = new JobDescriptor(txtJobName.getText(), jarFile, className,
+					txtAreaArguments.getText(), getFileNames(tableInFiles),
+					getFileNames(tableOutFiles));
 			return Optional.of(jd);
 		} catch (JobCreationException e) {
 			return Optional.empty();
@@ -809,10 +874,16 @@ public class ClientAppFrame extends JFrame {
 	}
 
 	private void promptGetConnectionInfo(ActionEvent e) {
-		final var dialog = new GetConnectionInfo(this, connectionInfoReady, () -> {
+		final var dialog = new GetConnectionInfo(this, connectionInfoReady, (info) -> {
+			try {
+				final var server = ConnectionProvider.connect(info, IPingable.class);
+				return IPingable.getPing(server);
+			} catch (ServerUnavailableException ex) {
+				return Optional.empty();
+			}
+		}, () -> {
 			connectReady.run();
 			mntmConnect.setEnabled(false);
-			mntmShowPing.setEnabled(true);
 		});
 		dialog.setVisible(true);
 		restoreStates(jobPanelHistory);
@@ -823,7 +894,7 @@ public class ClientAppFrame extends JFrame {
 	private ArrayList<String> getFileNames(JTable table) {
 		ArrayList<String> names = new ArrayList<>(6);
 		for (int i = 0; i < 6; i++) {
-			final var fileName = (String) table.getValueAt(i / 3, i % 3);
+			final var fileName = (String) table.getValueAt(i / 2, i % 2);
 			names.add(i, fileName);
 		}
 		return names;
@@ -831,7 +902,7 @@ public class ClientAppFrame extends JFrame {
 
 	private void populateFileTable(JTable table, String[] fileNames) {
 		for (int i = 0; i < fileNames.length; i++) {
-			table.setValueAt(fileNames[i], i / 3, i % 3);
+			table.setValueAt(fileNames[i], i / 2, i % 2);
 		}
 	}
 
@@ -842,8 +913,8 @@ public class ClientAppFrame extends JFrame {
 			txtClassName.setText(null);
 			txtAreaArguments.setText(null);
 			for (int i = 0; i < 6; i++) {
-				tableInFiles.setValueAt(null, i / 3, i % 3);
-				tableOutFiles.setValueAt(null, i / 3, i % 3);
+				tableInFiles.setValueAt(null, i / 2, i % 2);
+				tableOutFiles.setValueAt(null, i / 2, i % 2);
 			}
 			btnVerifyConfig.setEnabled(true);
 		}
@@ -856,8 +927,8 @@ public class ClientAppFrame extends JFrame {
 		txtClassName.setText(jd.getMainClassName());
 		final var fileStream = Stream.of(jd.getArgs()).map(Object::toString);
 		txtAreaArguments.setText(fileStream.collect(Collectors.joining(" ")));
-		populateFileTable(tableInFiles, jd.getFiles().getIn());
-		populateFileTable(tableOutFiles, jd.getFiles().getOut());
+		populateFileTable(tableInFiles, jd.getInFiles());
+		populateFileTable(tableOutFiles, jd.getOutFiles());
 
 	}
 
@@ -903,5 +974,33 @@ public class ClientAppFrame extends JFrame {
 
 	public boolean tempOnDesktop() {
 		return tglBtnTemp.isSelected();
+	}
+
+	public void setFileSizeText(String text) {
+		lblFileSizeValue.setText(text);
+	}
+
+	public void setProgressBar(int percent) {
+		uploadProgressBar.setValue(percent);
+	}
+
+	public void setTransferedSize(String text) {
+		lblSizeTransfered.setText(text);
+	}
+
+	public void promptTransferCompleteSucessfully() {
+		showMessage(PLAIN_MESSAGE, "Complete", "Job sent sucessfully, you are free to log out.");
+		clearNewJobFields();
+		jobPanelHistory = setEnabled(panelNewJob, false);
+		lblFileSizeValue.setText("???");
+		uploadProgressBar.setValue(0);
+		lblSizeTransfered.setText("0B");
+	}
+
+	public void promptTransferFailed(String message) {
+		showMessage(WARNING_MESSAGE, "Upload failed", message);
+		lblFileSizeValue.setText("???");
+		uploadProgressBar.setValue(0);
+		lblSizeTransfered.setText("0B");
 	}
 }
