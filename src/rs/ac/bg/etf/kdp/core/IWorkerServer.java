@@ -4,5 +4,5 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 
 public interface IWorkerServer extends IPingable, Remote {
-    void ping() throws RemoteException;
+	void ping() throws RemoteException;
 }

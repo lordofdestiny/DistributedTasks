@@ -4,9 +4,14 @@ import java.util.EventListener;
 
 public interface ConnectionListener extends EventListener {
 	void onConnected();
-    void onPingComplete(long ping);
-    void onConnectionLost();
-    void onReconnecting();
-    void onReconnected(long ping);
-    void onReconnectionFailed();
+
+	void onPingComplete(long ping);
+
+	void onConnectionLost();
+
+	void onReconnecting();
+
+	void onReconnected(long ping);
+
+	void onReconnectionFailed();
 }

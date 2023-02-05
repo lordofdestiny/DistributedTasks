@@ -5,5 +5,5 @@ import java.rmi.RemoteException;
 import java.util.UUID;
 
 public interface IUUIDPingable extends Remote {
-    void ping(UUID uuid) throws RemoteException;
+	void ping(UUID uuid) throws RemoteException;
 }
