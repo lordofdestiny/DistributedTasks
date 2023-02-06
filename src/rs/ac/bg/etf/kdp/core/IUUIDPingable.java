@@ -5,5 +5,16 @@ import java.rmi.RemoteException;
 import java.util.UUID;
 
 public interface IUUIDPingable extends Remote {
-	void ping(UUID uuid) throws RemoteException;
+	public class UnknownUUIDException extends RuntimeException {
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = 1L;
+
+		public UnknownUUIDException() {
+			super("Client or worker with this UUID is not registered!");
+		}
+	}
+
+	void ping(UUID uuid) throws RemoteException, UnknownUUIDException;
 }

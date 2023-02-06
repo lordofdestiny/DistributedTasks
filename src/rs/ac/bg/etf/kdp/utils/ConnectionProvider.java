@@ -4,9 +4,18 @@ import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 
-import rs.ac.bg.etf.kdp.gui.client.ServerUnavailableException;
-
 public class ConnectionProvider {
+	public static class ServerUnavailableException extends Exception {
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = 1L;
+
+		public ServerUnavailableException() {
+			super("Server is not online or bad credentials were provided!");
+		}
+	}
+
 	@SuppressWarnings("unchecked")
 	public static <T> T connect(ConnectionInfo info, Class<T> typeKey)
 			throws ServerUnavailableException {
