@@ -39,7 +39,7 @@ class JobRecord implements IDownloadable {
 	UUID getUUID() {
 		return jobUUID;
 	}
-	
+
 	Path getRootDir() {
 		return rootDir;
 	}
@@ -58,8 +58,12 @@ class JobRecord implements IDownloadable {
 	synchronized void setDeadline(Instant deadline) {
 		this.deadline = deadline;
 	}
-	// IRecievable
-	public synchronized boolean deadlineExpired() {
+
+	public synchronized Instant deadline() {
+		return deadline.plusSeconds(0);
+	}
+
+	public synchronized boolean deadlineExceeded() {
 		return Instant.now().isAfter(deadline);
 	}
 

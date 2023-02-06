@@ -7,7 +7,12 @@ import rs.ac.bg.etf.kdp.core.IWorkerServer;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 
 class WorkerRecord {
+	public enum WorkerState {
+		ONLINE, UNAVAILABLE, OFFLINE
+	}
+
 	UUID uuid;
+	WorkerState state;
 	IWorkerServer handle;
 	private boolean online;
 	private Instant deadline = null;
@@ -16,6 +21,7 @@ class WorkerRecord {
 		this.uuid = uuid;
 		this.handle = worker;
 		this.online = true;
+		state = WorkerState.ONLINE;
 	}
 
 	public void setDeadline() {
@@ -38,11 +44,11 @@ class WorkerRecord {
 		return online;
 	}
 
-	public void setOnline() {
-		this.online = true;
+	public void setState(WorkerState state) {
+		this.state = state;
 	}
 
-	public void setOffline() {
-		this.online = false;
+	public WorkerState getState() {
+		return state;
 	}
 }

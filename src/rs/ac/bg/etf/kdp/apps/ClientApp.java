@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import javax.swing.filechooser.FileSystemView;
 
@@ -37,36 +38,41 @@ public class ClientApp {
 		});
 		frame.setConnectListener(() -> {
 			final var listeners = new ArrayList<ConnectionListener>(2);
-			listeners.add(frame.getConnectionListener());
 			listeners.add(new ConnectionListener() {
 				@Override
 				public void onConnected() {
 					System.out.println("Connected!");
+					frame.setConnected();
 				}
 
 				@Override
 				public void onPingComplete(long ping) {
 					System.out.printf("Ping: %d ms\n", ping);
+					frame.updatePing(ping);
 				}
 
 				@Override
 				public void onConnectionLost() {
 					System.err.println("Connection lost!");
+					frame.setConnectionLost();
 				}
 
 				@Override
 				public void onReconnecting() {
 					System.err.println("Reconnecting...");
+					frame.setReconnecting();
 				}
 
 				@Override
 				public void onReconnected(long ping) {
 					System.out.printf("Reconnected, ping is %d ms\n", ping);
+					frame.setReconnected(ping);
 				}
 
 				@Override
 				public void onReconnectionFailed() {
 					System.err.println("Reconnection failed!");
+					frame.setReconnectionFailed();
 					System.exit(0);
 				}
 			});
@@ -79,6 +85,11 @@ public class ClientApp {
 			}
 		});
 		frame.setJobDescriptorListener((job) -> {
+			if (process == null) {
+				frame.showErrorToClient("Not authenticated",
+						"You need to authenticate in order to submit a job");
+				return;
+			}
 			try {
 				final var prefix = "linda_job-";
 
@@ -91,6 +102,7 @@ public class ClientApp {
 				process.submitJob(results.getZip(), new UploadingListener() {
 					long bytesUploaded = 0;
 					long totalSize = 0;
+					long failCount = 0;
 					{
 						try {
 							totalSize = Files.size(results.getZip().toPath());
@@ -100,7 +112,14 @@ public class ClientApp {
 					}
 
 					@Override
+					public void onBlockUploadFailed(int blockNo) {
+						failCount += 1;
+						System.out.printf("Block No. %d failed %d times", blockNo, failCount);
+					}
+
+					@Override
 					public void onBytesUploaded(int bytes) {
+						failCount = 0;
 						bytesUploaded += bytes;
 						frame.setTransferedSize(String.format("%dB", bytesUploaded));
 						if (totalSize != 0) {
@@ -111,12 +130,7 @@ public class ClientApp {
 					@Override
 					public void onDeadlineExceeded() {
 						frame.promptTransferFailed("Time limit exceeded! Check your connection");
-						try {
-							Files.walk(results.getDirectory()).sorted(Comparator.reverseOrder())
-									.map(Path::toFile).forEach(File::delete);
-						} catch (IOException e) {
-							System.err.println("Failed to cleanup after failed job transfer");
-						}
+						defaultCleanup(results.getDirectory());
 					}
 
 					@Override
@@ -127,12 +141,7 @@ public class ClientApp {
 
 					@Override
 					public void onUploadComplete(long bytes) {
-						try {
-							Files.walk(results.getDirectory()).sorted(Comparator.reverseOrder())
-									.map(Path::toFile).forEach(File::delete);
-						} catch (IOException e) {
-							System.err.println("Failed to cleanup after failed job transfer");
-						}
+						defaultCleanup(results.getDirectory());
 						frame.promptTransferCompleteSucessfully();
 					}
 
@@ -146,6 +155,31 @@ public class ClientApp {
 						"Failed during creation of temporary files. Try setting temporary directory.");
 			}
 		});
+	}
+
+	private static void defaultCleanup(Path dir) {
+		cleanup(dir, () -> {
+			System.out.printf("Cleand up the directory: %s\n", dir);
+		}, (e) -> {
+			System.err.println("Failed to cleanup after failed job transfer");
+		});
+	}
+
+	private static void cleanup(Path dir, Runnable success, Consumer<IOException> failed) {
+		try {
+			if (Files.walk(dir).sorted(Comparator.reverseOrder()).map(Path::toFile)
+					.map(File::delete).allMatch(b -> b)) {
+				success.run();
+			} else {
+				if (failed != null) {
+					failed.accept(null);
+				}
+			}
+		} catch (IOException e) {
+			if (failed != null) {
+				failed.accept(e);
+			}
+		}
 	}
 
 	public static void main(String[] args) {

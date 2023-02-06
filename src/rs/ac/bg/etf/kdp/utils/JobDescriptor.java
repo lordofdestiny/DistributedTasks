@@ -3,10 +3,8 @@ package rs.ac.bg.etf.kdp.utils;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.Reader;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Objects;
 import java.util.stream.Stream;
 
 import com.google.gson.Gson;
@@ -73,17 +71,19 @@ public class JobDescriptor {
 		this.jobJar = jobJar.getName();
 		this.mainClass = mainClass;
 		this.args = args != null ? args.replaceAll("\\s+", " ").split(" ") : new String[0];
-		this.files.in = inFiles != null ? inFiles.stream().filter(Objects::nonNull)
-				.filter(String::isBlank).toArray(String[]::new) : new String[0];
-		this.files.out = outFiles != null ? outFiles.stream().filter(Objects::nonNull)
-				.filter(String::isBlank).toArray(String[]::new) : new String[0];
+		this.files.in = inFiles != null
+				? inFiles.stream().filter(String::isBlank).toArray(String[]::new)
+				: new String[0];
+		this.files.out = outFiles != null
+				? outFiles.stream().filter(String::isBlank).toArray(String[]::new)
+				: new String[0];
 		this.fromConstructor = true;
 	}
 
 	public static JobDescriptor parse(File file) throws JobCreationException, FileNotFoundException,
 			JsonSyntaxException, JsonIOException {
-		Gson gson = new Gson();
-		Reader reader = new FileReader(file);
+		final var gson = new Gson();
+		final var reader = new FileReader(file);
 		final var jd = gson.fromJson(reader, JobDescriptor.class);
 		if (jd == null) {
 			throw new JobCreationException("Invalid file format");

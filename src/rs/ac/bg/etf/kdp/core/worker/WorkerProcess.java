@@ -11,13 +11,13 @@ import java.util.UUID;
 
 import rs.ac.bg.etf.kdp.core.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.core.IServerWorker;
+import rs.ac.bg.etf.kdp.core.IServerWorker.AlreadyRegisteredException;
 import rs.ac.bg.etf.kdp.core.IWorkerServer;
-import rs.ac.bg.etf.kdp.core.SessionExpiredException;
-import rs.ac.bg.etf.kdp.gui.client.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
+import rs.ac.bg.etf.kdp.utils.ConnectionProvider.ServerUnavailableException;
 
 public class WorkerProcess implements IWorkerServer, Unreferenced {
 	static {
@@ -59,7 +59,7 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 			server.register(uuid, this);
 		} catch (RemoteException | ServerUnavailableException e) {
 			return false;
-		} catch (SessionExpiredException e) {
+		} catch (AlreadyRegisteredException e) {
 			System.err.println(e.getCause());
 			System.exit(0);
 		}

@@ -1,8 +1,8 @@
 package rs.ac.bg.etf.kdp.gui.client;
 
 import static javax.swing.JOptionPane.ERROR_MESSAGE;
-import static javax.swing.JOptionPane.WARNING_MESSAGE;
 import static javax.swing.JOptionPane.PLAIN_MESSAGE;
+import static javax.swing.JOptionPane.WARNING_MESSAGE;
 import static javax.swing.JOptionPane.YES_NO_OPTION;
 import static javax.swing.JOptionPane.YES_OPTION;
 import static javax.swing.JOptionPane.showConfirmDialog;
@@ -11,7 +11,6 @@ import static javax.swing.JOptionPane.showMessageDialog;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Container;
 import java.awt.EventQueue;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
@@ -22,16 +21,16 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import javax.swing.Box;
@@ -45,6 +44,7 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.JSeparator;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
@@ -64,15 +64,14 @@ import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
 
 import rs.ac.bg.etf.kdp.core.IPingable;
-import rs.ac.bg.etf.kdp.utils.JobDescriptorIOOperations;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
-import rs.ac.bg.etf.kdp.utils.ConnectionListener;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
+import rs.ac.bg.etf.kdp.utils.ConnectionProvider.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.JarVerificator;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor;
-import rs.ac.bg.etf.kdp.utils.JobDescriptorValidator;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor.JobCreationException;
-import javax.swing.JProgressBar;
+import rs.ac.bg.etf.kdp.utils.JobDescriptorIOOperations;
+import rs.ac.bg.etf.kdp.utils.JobDescriptorValidator;
 
 public class ClientAppFrame extends JFrame {
 	/**
@@ -103,6 +102,8 @@ public class ClientAppFrame extends JFrame {
 			}
 		});
 	}
+
+	private final Timer timer = new Timer();
 
 	private final Supplier<UUID> newUUID;
 	private final Supplier<UUID> clientUUID;
@@ -164,9 +165,9 @@ public class ClientAppFrame extends JFrame {
 	private JButton btnSubmit;
 	private JFileChooser chooser;
 	private FileNameExtensionFilter jsonFilter;
+	private JTabbedPane tabbedPane;
 
 	private JobDescriptor jobDescriptor = null;
-	private Map<Component, Boolean> jobPanelHistory = null;
 
 	/**
 	 * Initialize the contents of the frame.
@@ -275,7 +276,7 @@ public class ClientAppFrame extends JFrame {
 		getContentPane().add(panelCenter, BorderLayout.CENTER);
 		panelCenter.setLayout(new BorderLayout(0, 0));
 
-		JTabbedPane tabbedPane = new JTabbedPane(JTabbedPane.TOP);
+		tabbedPane = new JTabbedPane(JTabbedPane.TOP);
 		panelCenter.add(tabbedPane);
 
 		jsonFilter = new FileNameExtensionFilter("JavaScript Object Notation", "json");
@@ -528,8 +529,6 @@ public class ClientAppFrame extends JFrame {
 		gbc_tableInFiles.gridy = 9;
 		panelNewJob.add(tableInFiles, gbc_tableInFiles);
 
-		jobPanelHistory = setEnabled(panelNewJob, false);
-
 		JLabel lblNewLabel_2 = new JLabel("OUT Files");
 		GridBagConstraints gbc_lblNewLabel_2 = new GridBagConstraints();
 		gbc_lblNewLabel_2.anchor = GridBagConstraints.NORTHWEST;
@@ -669,67 +668,61 @@ public class ClientAppFrame extends JFrame {
 		dialog.setVisible(true);
 	}
 
-	public final ConnectionListener connectionListener = new ConnectionListener() {
-		@Override
-		public void onConnected() {
-			lblConnectionStatus.setText("Online");
-			lblConnectionStatus.setForeground(Color.GREEN);
-		}
+	public void setConnected() {
+		lblConnectionStatus.setText("Online");
+		lblConnectionStatus.setForeground(Color.GREEN);
+	}
 
-		@Override
-		public void onReconnectionFailed() {
-			getContentPane().setEnabled(false);
-			lblConnectionStatus.setText("Offline");
-			lblConnectionStatus.setForeground(Color.RED);
-		}
+	public void setReconnectionFailed() {
+		getContentPane().setEnabled(false);
+		lblConnectionStatus.setText("Offline");
+		lblConnectionStatus.setForeground(Color.RED);
+	}
 
-		@Override
-		public void onReconnecting() {
-			Timer timer = new Timer();
-			Integer value = 0;
-			timer.schedule(new TimerTask() {
-				Integer v = value;
+	public void setReconnecting() {
+		class DrawTask extends TimerTask {
+			int i;
+			String text;
 
-				@Override
-				public void run() {
-					String nextValue = String.format("Reconnecting%s", ".".repeat(v));
-					lblConnectionStatus.setText(nextValue);
-					if (++v > 3) {
-						timer.cancel();
-						timer.purge();
-					}
+			DrawTask(String text, int iteration) {
+				this.text = text;
+				i = iteration;
+			}
+
+			@Override
+			public void run() {
+				lblConnectionStatus.setText(text);
+				String nextText = String.format("%s.", text);
+				if (i < 3) {
+					timer.schedule(new DrawTask(nextText, i + 1), 400);
 				}
-			}, 0, 400);
-		}
+			}
 
-		@Override
-		public void onReconnected(long ping) {
-			lblPingValue.setText(String.valueOf(ping));
-			lblConnectionStatus.setText("Online");
-			lblConnectionStatus.setForeground(Color.GREEN);
 		}
+		timer.schedule(new DrawTask("Reconnecting", 0), 0);
+	}
 
-		@Override
-		public void onPingComplete(long ping) {
-			lblPingValue.setText(String.valueOf(ping));
-		}
+	public void setReconnected(long ping) {
+		updatePing(ping);
+		lblConnectionStatus.setText("Online");
+		lblConnectionStatus.setForeground(Color.GREEN);
+	}
 
-		@Override
-		public void onConnectionLost() {
-			lblPingValue.setText("-\u221E");
-			lblConnectionStatus.setText("Reconnecting");
-			lblConnectionStatus.setForeground(Color.ORANGE);
-		}
-	};
+	public void updatePing(long ping) {
+		lblPingValue.setText(String.valueOf(ping));
+	}
+
+	public void setConnectionLost() {
+		lblPingValue.setText("-\u221E");
+		lblConnectionStatus.setText("Reconnecting");
+		lblConnectionStatus.setForeground(Color.ORANGE);
+	}
+
 	private JToggleButton tglBtnTemp;
 	private GridBagConstraints gbc_lblProgressText;
 	private JProgressBar uploadProgressBar;
 	private JLabel lblFileSizeValue;
 	private JLabel lblSizeTransfered;
-
-	public ConnectionListener getConnectionListener() {
-		return connectionListener;
-	}
 
 	private void loadConfigHandler(ActionEvent e) {
 		chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
@@ -886,18 +879,14 @@ public class ClientAppFrame extends JFrame {
 			mntmConnect.setEnabled(false);
 		});
 		dialog.setVisible(true);
-		restoreStates(jobPanelHistory);
-		jobPanelHistory = null;
 		dialog.dispose();
 	}
 
 	private ArrayList<String> getFileNames(JTable table) {
-		ArrayList<String> names = new ArrayList<>(6);
-		for (int i = 0; i < 6; i++) {
-			final var fileName = (String) table.getValueAt(i / 2, i % 2);
-			names.add(i, fileName);
-		}
-		return names;
+		return IntStream.range(0, 6).mapToObj(i -> table.getValueAt(i / 2, i % 2))
+				.map(String.class::cast).filter(Objects::nonNull)
+				.filter(Predicate.not(String::isBlank))
+				.collect(Collectors.toCollection(ArrayList::new));
 	}
 
 	private void populateFileTable(JTable table, String[] fileNames) {
@@ -941,29 +930,6 @@ public class ClientAppFrame extends JFrame {
 		tableOutFiles.setEnabled(enabled);
 	}
 
-	private void restoreStates(Map<Component, Boolean> history) {
-		if (history == null) {
-			return;
-		}
-		for (final var entry : history.entrySet()) {
-			entry.getKey().setEnabled(entry.getValue());
-		}
-	}
-
-	private Map<Component, Boolean> setEnabled(Component component, boolean enabled) {
-		Map<Component, Boolean> pastStates = new HashMap<>();
-		pastStates.put(component, component.isEnabled());
-		component.setEnabled(enabled);
-		if (component instanceof Container) {
-			for (final var child : ((Container) component).getComponents()) {
-				pastStates.put(child, child.isEnabled());
-				final var past = setEnabled(child, enabled);
-				pastStates.putAll(past);
-			}
-		}
-		return pastStates;
-	}
-
 	private void showMessage(int type, String title, String text) {
 		showMessageDialog(ClientAppFrame.this, text, title, type);
 	}
@@ -991,7 +957,6 @@ public class ClientAppFrame extends JFrame {
 	public void promptTransferCompleteSucessfully() {
 		showMessage(PLAIN_MESSAGE, "Complete", "Job sent sucessfully, you are free to log out.");
 		clearNewJobFields();
-		jobPanelHistory = setEnabled(panelNewJob, false);
 		lblFileSizeValue.setText("???");
 		uploadProgressBar.setValue(0);
 		lblSizeTransfered.setText("0B");

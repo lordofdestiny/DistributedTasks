@@ -5,15 +5,21 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.rmi.Remote;
 import java.rmi.RemoteException;
+import java.time.Instant;
 
 public interface IFileDownloader extends Remote, Serializable {
 	public interface IDownloadable {
-		boolean deadlineExpired();
+		Instant deadline();
+
+		boolean deadlineExceeded();
+
 		File getFileLocation();
 	}
 
 	public interface DownloadingListener {
-		void onBytesReceived(int bytes);
+		default void onBytesReceived(int bytes) {
+
+		}
 
 		void onTransferComplete();
 

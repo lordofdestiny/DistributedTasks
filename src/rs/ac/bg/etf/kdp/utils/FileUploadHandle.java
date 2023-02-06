@@ -3,7 +3,6 @@ package rs.ac.bg.etf.kdp.utils;
 import java.io.Serializable;
 import java.rmi.RemoteException;
 import java.time.Instant;
-import java.time.temporal.TemporalAmount;
 
 import rs.ac.bg.etf.kdp.utils.IFileDownloader.DeadlineExceededException;
 import rs.ac.bg.etf.kdp.utils.IFileDownloader.RemoteIOException;
@@ -16,7 +15,7 @@ public class FileUploadHandle implements Serializable {
 	private Instant deadline;
 	private IFileDownloader receiver;
 
-	public FileUploadHandle(IFileDownloader receiver, Instant deadline, TemporalAmount amount) {
+	public FileUploadHandle(IFileDownloader receiver, Instant deadline) {
 		this.receiver = receiver;
 		this.deadline = deadline;
 	}
