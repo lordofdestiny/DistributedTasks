@@ -4,8 +4,6 @@ import java.util.ArrayList;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import rs.ac.bg.etf.kdp.Linda;
-
 public class LocalLinda implements Linda {
 	/**
 	 * 

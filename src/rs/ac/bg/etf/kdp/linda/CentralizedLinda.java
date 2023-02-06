@@ -6,7 +6,6 @@ import java.util.Random;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import rs.ac.bg.etf.kdp.Linda;
 import rs.ac.bg.etf.kdp.tuple.AwaitableTuple;
 import rs.ac.bg.etf.kdp.tuple.Tuple;
 import rs.ac.bg.etf.kdp.utils.ClassMethodInvoker;

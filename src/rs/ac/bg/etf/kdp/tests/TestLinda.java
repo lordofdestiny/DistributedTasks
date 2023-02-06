@@ -3,7 +3,7 @@ package rs.ac.bg.etf.kdp.tests;
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
-import rs.ac.bg.etf.kdp.Linda;
+import rs.ac.bg.etf.kdp.linda.Linda;
 import rs.ac.bg.etf.kdp.linda.CentralizedLinda;
 
 public class TestLinda {

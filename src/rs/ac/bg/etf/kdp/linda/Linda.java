@@ -1,4 +1,4 @@
-package rs.ac.bg.etf.kdp;
+package rs.ac.bg.etf.kdp.linda;
 
 import java.io.Serializable;
 
