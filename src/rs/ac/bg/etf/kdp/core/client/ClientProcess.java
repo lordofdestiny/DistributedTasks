@@ -21,6 +21,8 @@ import com.google.gson.JsonSyntaxException;
 import rs.ac.bg.etf.kdp.core.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.core.IClientServer;
 import rs.ac.bg.etf.kdp.core.IServerClient;
+import rs.ac.bg.etf.kdp.core.IServerClient.UnregisteredClientException;
+import rs.ac.bg.etf.kdp.core.IServerClient.MultipleJobsException;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
@@ -32,6 +34,7 @@ import rs.ac.bg.etf.kdp.utils.JobDescriptorIOOperations;
 import rs.ac.bg.etf.kdp.utils.FileUploader.UploadingListener;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor.JobCreationException;
+
 
 public class ClientProcess implements IClientServer, Unreferenced {
 	private ConnectionMonitor monitor = null;
@@ -68,12 +71,16 @@ public class ClientProcess implements IClientServer, Unreferenced {
 		return monitor;
 	}
 
-	public FileUploader submitJob(File zipFile, UploadingListener cb) {
+	public FileUploader submitJob(File zipFile, UploadingListener cb) throws IServerClient.UnregisteredClientException, IServerClient.MultipleJobsException {
 		FileUploadHandle handle = null;
 		try {
 			handle = server.registerJob(uuid);
 		} catch (RemoteException e) {
 			cb.onFailedConnection();
+		} catch (IServerClient.UnregisteredClientException e) {
+			throw e;
+		} catch (IServerClient.MultipleJobsException e) {
+			throw e;
 		}
 		FileUploader uploader = new FileUploader(handle, zipFile, cb);
 		uploader.start();
@@ -81,7 +88,7 @@ public class ClientProcess implements IClientServer, Unreferenced {
 	}
 
 	public static void main(String[] args) {
-		final var cinfo = new ConnectionInfo("localhost", Configuration.SERVER_PORT);
+		final var cinfo = new ConnectionInfo("147.91.12.49", Configuration.SERVER_PORT);
 		ClientProcess cp = new ClientProcess(UUID.randomUUID(), cinfo);
 		final var listeners = new ArrayList<ConnectionListener>(1);
 		listeners.add(new ConnectionListener() {
@@ -122,7 +129,7 @@ public class ClientProcess implements IClientServer, Unreferenced {
 		}
 
 		final var homeDir = FileSystemView.getFileSystemView().getHomeDirectory().toPath();
-		final var filePath = "C:\\Users\\djumi\\Desktop\\test.json";
+		final var filePath = homeDir.resolve("test.json").toFile();
 		try {
 			final var job = JobDescriptor.parse(filePath);
 			final var temp = Files.createTempDirectory(homeDir, "linda_job-");
@@ -200,7 +207,8 @@ public class ClientProcess implements IClientServer, Unreferenced {
 				System.err.println("Unexpectedly interrupted!");
 			}
 			cp.shutdown();
-		} catch (IOException | JsonSyntaxException | JsonIOException | JobCreationException e) {
+		} catch (IOException | JsonSyntaxException | JsonIOException | JobCreationException |
+				 UnregisteredClientException | MultipleJobsException e) {
 			System.out.println("Failed to do stuff");
 			e.printStackTrace();
 		}

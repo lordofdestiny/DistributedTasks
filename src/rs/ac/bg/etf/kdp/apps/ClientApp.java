@@ -12,6 +12,9 @@ import java.util.function.Consumer;
 
 import javax.swing.filechooser.FileSystemView;
 
+import rs.ac.bg.etf.kdp.core.IServerClient;
+import rs.ac.bg.etf.kdp.core.IServerClient.UnregisteredClientException;
+import rs.ac.bg.etf.kdp.core.IServerClient.MultipleJobsException;
 import rs.ac.bg.etf.kdp.core.client.ClientProcess;
 import rs.ac.bg.etf.kdp.gui.client.ClientAppFrame;
 import rs.ac.bg.etf.kdp.utils.Configuration;
@@ -98,63 +101,75 @@ public class ClientApp {
 						: Files.createTempDirectory(prefix);
 
 				TemporaryFiles results = JobDescriptorIOOperations.createTempZip(job, temp);
+				process.submitJob(results.getZip(), new DefaultUploadListener(results));
 
-				process.submitJob(results.getZip(), new UploadingListener() {
-					long bytesUploaded = 0;
-					long totalSize = 0;
-					long failCount = 0;
-					{
-						try {
-							totalSize = Files.size(results.getZip().toPath());
-						} catch (IOException ignore) {
-						}
-						frame.setFileSizeText(String.format("%.2fKB", totalSize / 1024.0));
-					}
-
-					@Override
-					public void onBlockUploadFailed(int blockNo) {
-						failCount += 1;
-						System.out.printf("Block No. %d failed %d times\n", blockNo, failCount);
-					}
-
-					@Override
-					public void onBytesUploaded(int bytes) {
-						failCount = 0;
-						bytesUploaded += bytes;
-						frame.setTransferedSize(String.format("%dB", bytesUploaded));
-						if (totalSize != 0) {
-							frame.setProgressBar((int) (bytesUploaded * 100.0 / totalSize));
-						}
-					}
-
-					@Override
-					public void onDeadlineExceeded() {
-						frame.promptTransferFailed("Time limit exceeded! Check your connection");
-						defaultCleanup(results.getDirectory());
-					}
-
-					@Override
-					public void onIOException() {
-						frame.promptTransferFailed(
-								"Files could not be read from disk. Try saving them on desktop!");
-					}
-
-					@Override
-					public void onUploadComplete(long bytes) {
-						defaultCleanup(results.getDirectory());
-						frame.promptTransferCompleteSucessfully();
-					}
-
-					@Override
-					public void onFailedConnection() {
-						frame.promptTransferFailed("Server is not available! Try later!");
-					}
-				});
 			} catch (IOException e) {
 				frame.showErrorToClient("Error",
 						"Failed during creation of temporary files. Try setting temporary directory.");
+			} catch (UnregisteredClientException e) {
+				throw new RuntimeException(e);
+			} catch (MultipleJobsException e) {
+				throw new RuntimeException(e);
 			}
 		});
+	}
+	private class DefaultUploadListener implements UploadingListener{
+		private long bytesUploaded = 0;
+		private long totalSize = 0;
+		private long failCount = 0;
+
+		TemporaryFiles tmp;
+
+		DefaultUploadListener(TemporaryFiles tmp){
+			this.tmp = tmp;
+		}
+
+		{
+			try {
+				totalSize = Files.size(tmp.getZip().toPath());
+			} catch (IOException ignore) {
+			}
+			frame.setFileSizeText(String.format("%.2fKB", totalSize / 1024.0));
+		}
+
+		@Override
+		public void onBlockUploadFailed(int blockNo) {
+			failCount += 1;
+			System.out.printf("Block No. %d failed %d times\n", blockNo, failCount);
+		}
+
+		@Override
+		public void onBytesUploaded(int bytes) {
+			failCount = 0;
+			bytesUploaded += bytes;
+			frame.setTransferedSize(String.format("%dB", bytesUploaded));
+			if (totalSize != 0) {
+				frame.setProgressBar((int) (bytesUploaded * 100.0 / totalSize));
+			}
+		}
+
+		@Override
+		public void onDeadlineExceeded() {
+			frame.promptTransferFailed("Time limit exceeded! Check your connection");
+			defaultCleanup(tmp.getDirectory());
+		}
+
+		@Override
+		public void onIOException() {
+			frame.promptTransferFailed(
+					"Files could not be read from disk. Try saving them on desktop!");
+		}
+
+		@Override
+		public void onUploadComplete(long bytes) {
+			defaultCleanup(tmp.getDirectory());
+			frame.promptTransferCompleteSucessfully();
+		}
+
+		@Override
+		public void onFailedConnection() {
+			frame.promptTransferFailed("Server is not available! Try later!");
+		}
 	}
 
 	private static void defaultCleanup(Path dir) {
@@ -181,6 +196,7 @@ public class ClientApp {
 			}
 		}
 	}
+
 
 	public static void main(String[] args) {
 		EventQueue.invokeLater(() -> {
