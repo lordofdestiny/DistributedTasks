@@ -1,8 +1,6 @@
 package rs.ac.bg.etf.kdp.utils;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
+import java.io.*;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.stream.Stream;
@@ -40,7 +38,7 @@ public class JobDescriptor {
 	String name;
 	String mainClass;
 	String[] args;
-	JobFiles files;
+	JobFiles files = new JobFiles();
 	transient Path confFileDir;
 	transient String confFileName;
 	transient boolean fromConstructor = false;
@@ -80,16 +78,22 @@ public class JobDescriptor {
 		this.fromConstructor = true;
 	}
 
-	public static JobDescriptor parse(File file) throws JobCreationException, FileNotFoundException,
+	public static JobDescriptor parse(File file) throws IOException, JobCreationException,
 			JsonSyntaxException, JsonIOException {
 		final var gson = new Gson();
-		final var reader = new FileReader(file);
-		final var jd = gson.fromJson(reader, JobDescriptor.class);
-		if (jd == null) {
-			throw new JobCreationException("Invalid file format");
+
+		JobDescriptor jd;
+		try(Reader reader = new FileReader(file)){
+			jd = gson.fromJson(reader, JobDescriptor.class);
+			if (jd == null) {
+				throw new JobCreationException("Invalid file format");
+			}
+			jd.confFileDir = file.getParentFile().toPath();
+			jd.confFileName = file.getName();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		}
-		jd.confFileDir = file.getParentFile().toPath();
-		jd.confFileName = file.getName();
+
 		return jd;
 	}
 
