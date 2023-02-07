@@ -110,11 +110,27 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
     }
 
     @Override
-    public void register(UUID id, IClientServer client) {
-        final var record = new ClientRecord(id, client);
-        registeredClients.put(id, record);
+    public void register(UUID id, IClientServer clientHandle) {
+        final var client = registeredClients.get(id);
+        if (client != null) {
+            client.online = true;
+        } else {
+            final var record = new ClientRecord(id, clientHandle);
+            registeredClients.put(id, record);
+        }
         System.out.printf("Client %s is online!\n", id);
     }
+
+    @Override
+    public void unregister(UUID id) throws RemoteException, UnregisteredClientException {
+        ClientRecord client = registeredClients.get(id);
+        if (client == null) {
+            throw new UnregisteredClientException();
+        }
+        client.online = false;
+        System.out.printf("Client %s is offline!\n", id);
+    }
+
 
     @Override
     public void ping(UUID id) throws RemoteException {

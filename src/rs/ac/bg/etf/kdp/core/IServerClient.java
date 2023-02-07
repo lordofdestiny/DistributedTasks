@@ -36,5 +36,7 @@ public interface IServerClient extends IPingable, IUUIDPingable, Remote {
 		}
 	}
 
+	void unregister(UUID id) throws RemoteException, UnregisteredClientException;
+
 	FileUploadHandle registerJob(UUID userUUID) throws RemoteException, UnregisteredClientException, MultipleJobsException;
 }

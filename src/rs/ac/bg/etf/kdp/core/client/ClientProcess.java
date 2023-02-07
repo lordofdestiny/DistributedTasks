@@ -215,6 +215,11 @@ public class ClientProcess implements IClientServer, Unreferenced {
 	}
 
 	public void shutdown() {
+		try {
+			server.unregister(uuid);
+		} catch (UnregisteredClientException | RemoteException e) {
+			System.err.println("Failed to unregister at server!");
+		}
 		monitor.quit();
 		unreferenced();
 	}

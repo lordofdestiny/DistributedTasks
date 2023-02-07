@@ -176,7 +176,7 @@ public class ClientAppFrame extends JFrame {
 	private void initialize() {
 		setTitle("Client");
 		setBounds(100, 100, 500, 550);
-		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 
 		JMenuBar menuBar = new JMenuBar();
 		setJMenuBar(menuBar);

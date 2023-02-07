@@ -9,6 +9,8 @@ class ClientRecord {
 	UUID currentJob;
 	IClientServer handle;
 
+	boolean online;
+
 	ClientRecord(UUID uuid, IClientServer handle) {
 		this.uuid = uuid;
 		this.handle = handle;
