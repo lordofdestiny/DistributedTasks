@@ -1,79 +1,45 @@
 package rs.ac.bg.etf.kdp.core.server;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.function.Supplier;
-import java.util.stream.Stream;
-
 import rs.ac.bg.etf.kdp.core.IPingable;
 
 public class WorkerMonitor extends Thread {
-	private int interval = 5000;
-	private Supplier<WorkerRecord[]> workerSource;
-	private List<WorkerStateListener> listeners;
+    private int interval = 5000;
+    private WorkerRecord record;
+    private WorkerStateListener listener;
 
-	WorkerMonitor(Supplier<WorkerRecord[]> workers, int interval) {
-		this.listeners = new ArrayList<>();
-		this.workerSource = workers;
-		this.interval = interval;
-	}
+    WorkerMonitor(WorkerRecord record, int interval, WorkerStateListener listener) {
+        this.listener = listener;
+        this.interval = interval;
+        this.record = record;
+    }
 
-	@Override
-	public void run() {
-		while (true) {
-			if (Thread.interrupted()) {
-				return;
-			}
-			Thread[] threads = Stream.of(workerSource.get()).map(this::makeMonitor).map(Thread::new)
-					.toArray(Thread[]::new);
-			Arrays.stream(threads).forEach(Thread::start);
-			try {
-				for (final var thread : threads) {
-					thread.join();
-				}
-				Thread.sleep(this.interval);
-			} catch (InterruptedException ignore) {
-			}
-		}
-	}
+    @Override
+    public void run() {
+        while (true) {
+            if(Thread.interrupted()){
+                return;
+            }
+            final var wasOnline = record.isOnline();
+            final var ping = IPingable.getPing(record.getHandle());
+            if (ping.isPresent()) {
+                if (wasOnline) {
+                    listener.isConnected(record, ping.get());
+                } else {
+                    listener.reconnected(record, ping.get());
+                }
+            } else if (wasOnline) {
+                listener.workerUnavailable(record);
+            } else if(record.deadlineExpired()){
+                listener.workerFailed(record);
+            }
+            try {
+                Thread.sleep(interval);
+            } catch (InterruptedException e) {
+            }
+        }
+    }
 
-	int getPingInterval() {
-		return interval;
-	}
-
-	void setPingInterval(int interval) {
-		this.interval = interval;
-	}
-
-	Runnable makeMonitor(WorkerRecord worker) {
-		return () -> {
-			final var wasOnline = worker.isOnline();
-			final var ping = IPingable.getPing(worker.getHandle());
-			if (ping.isPresent()) {
-				if (wasOnline) {
-					listeners.forEach(listener -> listener.isConnected(worker, ping.get()));
-				} else {
-					listeners.forEach(listener -> listener.reconnected(worker, ping.get()));
-				}
-			} else {
-				if (worker.isOnline()) {
-					listeners.forEach(listener -> listener.workerFaied(worker));
-				}
-				listeners.forEach(listener -> listener.notConnected(worker));
-			}
-		};
-	}
-
-	public void addWorkerStateListener(WorkerStateListener listener) {
-		listeners.add(listener);
-	}
-
-	public void removeWorkerStateListener(WorkerStateListener listener) {
-		listeners.remove(listener);
-	}
-
-	public void quit() {
-		interrupt();
-	}
+    public void quit() {
+        interrupt();
+    }
 }

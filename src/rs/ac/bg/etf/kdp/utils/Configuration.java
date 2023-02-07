@@ -21,6 +21,8 @@ public class Configuration {
 
 	public static final int MAX_BUFFER_SIZE = loadInt("linda.maxBufferSize");
 
+	public static final int SERVER_RECONNECTION_PERIOD = loadInt("worker.serverReconnectionPeriod");
+
 	public static void load() {
 	}
 

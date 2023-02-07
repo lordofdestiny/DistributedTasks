@@ -14,14 +14,14 @@ class WorkerRecord {
 	UUID uuid;
 	WorkerState state;
 	IWorkerServer handle;
-	private boolean online;
+
+	private WorkerMonitor monitor;
 	private Instant deadline = null;
 
 	WorkerRecord(UUID uuid, IWorkerServer worker) {
 		this.uuid = uuid;
 		this.handle = worker;
-		this.online = true;
-		state = WorkerState.ONLINE;
+		this.state = WorkerState.ONLINE;
 	}
 
 	public void setDeadline() {
@@ -29,7 +29,7 @@ class WorkerRecord {
 	}
 
 	public boolean deadlineExpired() {
-		return deadline.isBefore(Instant.now());
+		return Instant.now().isAfter(deadline);
 	}
 
 	public UUID getUUID() {
@@ -41,7 +41,7 @@ class WorkerRecord {
 	}
 
 	public boolean isOnline() {
-		return online;
+		return state == WorkerState.ONLINE;
 	}
 
 	public void setState(WorkerState state) {
@@ -50,5 +50,10 @@ class WorkerRecord {
 
 	public WorkerState getState() {
 		return state;
+	}
+
+	public void initializeMonitor(int interval, WorkerStateListener listner) {
+		this.monitor = new WorkerMonitor(this, interval, listner);
+		this.monitor.start();
 	}
 }

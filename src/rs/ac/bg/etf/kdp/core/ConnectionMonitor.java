@@ -1,14 +1,15 @@
 package rs.ac.bg.etf.kdp.core;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.UUID;
 
+import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
 
 public class ConnectionMonitor extends Thread {
 	private final IPingable server;
 	private final int interval;
-	private long lastOnlineTime;
 	private boolean connected = true;
 	private final ArrayList<ConnectionListener> listeners = new ArrayList<>();
 
@@ -40,7 +41,10 @@ public class ConnectionMonitor extends Thread {
 				setConnected(false);
 				listeners.forEach(ConnectionListener::onConnectionLost);
 				try {
-					reconnectToServer();
+					final var deadline =
+							Instant.now().plusSeconds(Configuration.SERVER_RECONNECTION_PERIOD);
+					reconnectToServer(deadline);
+					continue;
 				} catch (KillException e) {
 					return;
 				}
@@ -51,7 +55,6 @@ public class ConnectionMonitor extends Thread {
 				first = false;
 			}
 			// Ping successful
-			lastOnlineTime = System.currentTimeMillis();
 			listeners.forEach(l -> l.onPingComplete(ping.get()));
 			try {
 				// noinspection BusyWait
@@ -63,8 +66,8 @@ public class ConnectionMonitor extends Thread {
 		}
 	}
 
-	private void reconnectToServer() throws KillException {
-		while (System.currentTimeMillis() - lastOnlineTime < 60 * 1000) {
+	private void reconnectToServer(Instant deadline) throws KillException {
+		while (Instant.now().isBefore(deadline)) {
 			if (Thread.interrupted()) {
 				throw new KillException();
 			}

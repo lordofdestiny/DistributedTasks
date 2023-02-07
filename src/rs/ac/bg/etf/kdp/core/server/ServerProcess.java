@@ -7,9 +7,12 @@ import java.nio.file.Path;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,49 +46,12 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
     private final Map<UUID, ClientRecord> registeredClients = new ConcurrentHashMap<>();
     private final Map<UUID, JobRecord> allJobs = new ConcurrentHashMap<>();
 
-    private WorkerMonitor monitor = null;
-    private final WorkerStateListener defaultWorkerStateListener = new WorkerStateListener() {
-        @Override
-        public void workerFaied(WorkerRecord worker) {
-            worker.setState(WorkerState.OFFLINE);
-            System.err.printf("Worker %s failed and is offline!\n", worker.uuid);
-            worker.setDeadline();
-        }
-
-        @Override
-        public void reconnected(WorkerRecord worker, long ping) {
-            worker.setState(WorkerState.OFFLINE);
-            System.out.printf("Worker %s is online again! Ping %d ms\n", worker.uuid, ping);
-        }
-
-        @Override
-        public void notConnected(WorkerRecord worker) {
-            worker.setState(WorkerState.UNAVAILABLE);
-            if (worker.deadlineExpired()) {
-                registeredWorkers.remove(worker.getUUID());
-                System.err.printf("Worker UUID %s invalidated for future uses!", worker.uuid);
-            }
-        }
-
-        @Override
-        public void isConnected(WorkerRecord worker, long ping) {
-            worker.setState(WorkerState.ONLINE);
-            System.out.printf("Ping to %s is %d ms\n", worker.uuid, ping);
-        }
-    };
-
     public ServerProcess() throws RemoteException {
         try {
             final var registry = LocateRegistry.createRegistry(Configuration.SERVER_PORT);
             registry.rebind(Configuration.SERVER_ROUTE, this);
             System.out.printf("Server started on port %s", Configuration.SERVER_PORT);
-            monitor = new WorkerMonitor(() -> {
-                return registeredWorkers.values().stream().toArray(WorkerRecord[]::new);
-            }, Configuration.SERVER_PING_INTERVAL);
-            monitor.addWorkerStateListener(defaultWorkerStateListener);
             ServerProcess.setLog(System.out);
-
-            monitor.start();
         } catch (RemoteException e) {
             System.err.println("Failed to start central server!");
             System.err.println(e.getMessage());
@@ -99,6 +65,43 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
             throw new AlreadyRegisteredException();
         }
         final var record = new WorkerRecord(id, worker);
+        record.initializeMonitor(Configuration.SERVER_PING_INTERVAL, new WorkerStateListener() {
+            boolean firstFail = true;
+
+            private final String DATE_FORMAT_STR = "dd.MM.YYYY. HH:mm:ss";
+            private final DateFormat df = new SimpleDateFormat(DATE_FORMAT_STR);
+            private String now() {
+                return df.format(new Date());
+            }
+
+            @Override
+            public void workerUnavailable(WorkerRecord worker) {
+                worker.setState(WorkerState.UNAVAILABLE);
+                System.err.printf("[%s] Worker %s unavailable!\n",now(), worker.uuid);
+                worker.setDeadline();
+            }
+
+            @Override
+            public void reconnected(WorkerRecord worker, long ping) {
+                worker.setState(WorkerState.ONLINE);
+                System.out.printf("[%s] Worker %s is online again! Ping %d ms\n",now(), worker.uuid, ping);
+            }
+
+            @Override
+            public void workerFailed(WorkerRecord worker) {
+                if(worker.isOnline()){
+                    worker.setState(WorkerState.OFFLINE);
+                    System.err.printf("[%s] Worker UUID %s is offline!",now(), worker.uuid);
+                }
+            }
+
+            @Override
+            public void isConnected(WorkerRecord worker, long ping) {
+                worker.setState(WorkerState.ONLINE);
+                System.out.printf("[%s] Ping to %s is %d ms\n",now(), worker.uuid, ping);
+            }
+        });
+
         registeredWorkers.put(id, record);
         try {
             worker.ping();
