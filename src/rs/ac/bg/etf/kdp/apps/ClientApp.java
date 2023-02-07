@@ -12,6 +12,9 @@ import java.util.function.Consumer;
 
 import javax.swing.filechooser.FileSystemView;
 
+import rs.ac.bg.etf.kdp.core.IServerClient;
+import rs.ac.bg.etf.kdp.core.IServerClient.UnregisteredClientException;
+import rs.ac.bg.etf.kdp.core.IServerClient.MultipleJobsException;
 import rs.ac.bg.etf.kdp.core.client.ClientProcess;
 import rs.ac.bg.etf.kdp.gui.client.ClientAppFrame;
 import rs.ac.bg.etf.kdp.utils.Configuration;
@@ -98,14 +101,16 @@ public class ClientApp {
 						: Files.createTempDirectory(prefix);
 
 				TemporaryFiles results = JobDescriptorIOOperations.createTempZip(job, temp);
-
-				process.submitJob(results.getZip(), new UploadingListener() {
+				process.submitJob(results.getZip(), new UploadingListener(){
 					long bytesUploaded = 0;
 					long totalSize = 0;
 					long failCount = 0;
+
+					TemporaryFiles tmp;
+
 					{
 						try {
-							totalSize = Files.size(results.getZip().toPath());
+							totalSize = Files.size(tmp.getZip().toPath());
 						} catch (IOException ignore) {
 						}
 						frame.setFileSizeText(String.format("%.2fKB", totalSize / 1024.0));
@@ -130,7 +135,7 @@ public class ClientApp {
 					@Override
 					public void onDeadlineExceeded() {
 						frame.promptTransferFailed("Time limit exceeded! Check your connection");
-						defaultCleanup(results.getDirectory());
+						defaultCleanup(tmp.getDirectory());
 					}
 
 					@Override
@@ -141,7 +146,7 @@ public class ClientApp {
 
 					@Override
 					public void onUploadComplete(long bytes) {
-						defaultCleanup(results.getDirectory());
+						defaultCleanup(tmp.getDirectory());
 						frame.promptTransferCompleteSucessfully();
 					}
 
@@ -150,9 +155,14 @@ public class ClientApp {
 						frame.promptTransferFailed("Server is not available! Try later!");
 					}
 				});
+
 			} catch (IOException e) {
 				frame.showErrorToClient("Error",
 						"Failed during creation of temporary files. Try setting temporary directory.");
+			} catch (UnregisteredClientException e) {
+				throw new RuntimeException(e);
+			} catch (MultipleJobsException e) {
+				throw new RuntimeException(e);
 			}
 		});
 	}
@@ -181,6 +191,7 @@ public class ClientApp {
 			}
 		}
 	}
+
 
 	public static void main(String[] args) {
 		EventQueue.invokeLater(() -> {

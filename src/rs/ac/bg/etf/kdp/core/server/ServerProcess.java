@@ -133,15 +133,13 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
     }
 
     @Override
-    public FileUploadHandle registerJob(UUID userId) throws RemoteException {
+    public FileUploadHandle registerJob(UUID userId) throws RemoteException, UnregisteredClientException, MultipleJobsException {
         ClientRecord client = registeredClients.get(userId);
         if (client == null) {
-            // throw unregistered user error
-            return null;
+            throw new UnregisteredClientException();
         }
         if (client.hasRegisteredJob()) {
-            // throw job already registered
-            return null;
+            throw new MultipleJobsException();
         }
         final var jobUUID = UUID.randomUUID();
         final var deadline = Instant.now().plus(2, ChronoUnit.MINUTES);
