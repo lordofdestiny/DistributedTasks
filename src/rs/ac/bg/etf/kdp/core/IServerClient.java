@@ -5,7 +5,6 @@ import java.rmi.RemoteException;
 import java.rmi.UnexpectedException;
 import java.util.UUID;
 
-import com.sun.security.ntlm.Server;
 import rs.ac.bg.etf.kdp.utils.FileUploadHandle;
 
 public interface IServerClient extends IPingable, IUUIDPingable, Remote {
