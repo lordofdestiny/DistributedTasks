@@ -19,6 +19,7 @@ import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Objects;
@@ -743,11 +744,11 @@ public class ClientAppFrame extends JFrame {
 			btnClearConfig.setEnabled(true);
 			inputsSetEnabled(false);
 		} catch (FileNotFoundException e1) {
-			showMessageDialog(ClientAppFrame.this, "Selected file could not be read", "File error",
-					ERROR_MESSAGE);
+			showErrorToClient("File error","Selected file could not be read");
 		} catch (JobCreationException | JsonSyntaxException | JsonIOException e2) {
-			showMessageDialog(ClientAppFrame.this, "Bad JSON format.", "File format error",
-					ERROR_MESSAGE);
+			showErrorToClient("File format error", "Bad JSON format.");
+		}catch (IOException e3){
+			showErrorToClient("File error", "Unknown file error occured...");
 		}
 	}
 
