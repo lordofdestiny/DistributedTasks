@@ -124,7 +124,7 @@ public class ClientProcess implements IClientServer, Unreferenced {
 		final var homeDir = FileSystemView.getFileSystemView().getHomeDirectory().toPath();
 		final var filePath = "C:\\Users\\djumi\\Desktop\\test.json";
 		try {
-			final var job = JobDescriptor.parse(new File(filePath));
+			final var job = JobDescriptor.parse(filePath);
 			final var temp = Files.createTempDirectory(homeDir, "linda_job-");
 			final var results = JobDescriptorIOOperations.createTempZip(job, temp);
 			final var uploader = cp.submitJob(results.getZip(), new UploadingListener() {
