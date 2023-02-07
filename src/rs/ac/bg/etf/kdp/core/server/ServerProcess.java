@@ -16,6 +16,9 @@ import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import rs.ac.bg.etf.kdp.core.IClientServer;
 import rs.ac.bg.etf.kdp.core.IServerClient;
@@ -46,6 +49,17 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
     private final Map<UUID, ClientRecord> registeredClients = new ConcurrentHashMap<>();
     private final Map<UUID, JobRecord> allJobs = new ConcurrentHashMap<>();
 
+    private ExecutorService jobUploaderThreadPool = Executors.newCachedThreadPool();
+
+    private final JobScheduler scheduler = new JobScheduler((worker, job) -> {
+        jobUploaderThreadPool.submit(()->{
+            try {
+                worker.handle.uploadJob(null, null);
+            } catch (RemoteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    });
     public ServerProcess() throws RemoteException {
         try {
             final var registry = LocateRegistry.createRegistry(Configuration.SERVER_PORT);
@@ -60,16 +74,18 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
     }
 
     @Override
-    public void register(UUID id, IWorkerServer worker) throws AlreadyRegisteredException, RemoteException {
+    public void register(UUID id, IWorkerServer worker, int concurrency) throws AlreadyRegisteredException,
+            RemoteException {
         if (registeredWorkers.containsKey(id)) {
             throw new AlreadyRegisteredException();
         }
-        final var record = new WorkerRecord(id, worker);
+        final var record = new WorkerRecord(id, worker, concurrency);
         record.initializeMonitor(Configuration.SERVER_PING_INTERVAL, new WorkerStateListener() {
             boolean firstFail = true;
 
             private final String DATE_FORMAT_STR = "dd.MM.YYYY. HH:mm:ss";
             private final DateFormat df = new SimpleDateFormat(DATE_FORMAT_STR);
+
             private String now() {
                 return df.format(new Date());
             }
@@ -77,34 +93,36 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
             @Override
             public void workerUnavailable(WorkerRecord worker) {
                 worker.setState(WorkerState.UNAVAILABLE);
-                System.err.printf("[%s] Worker %s unavailable!\n",now(), worker.uuid);
+                System.err.printf("[%s] Worker %s unavailable!\n", now(), worker.uuid);
                 worker.setDeadline();
             }
 
             @Override
             public void reconnected(WorkerRecord worker, long ping) {
+                scheduler.putWorker(worker);
                 worker.setState(WorkerState.ONLINE);
-                System.out.printf("[%s] Worker %s is online again! Ping %d ms\n",now(), worker.uuid, ping);
+                System.out.printf("[%s] Worker %s is online again! Ping %d ms\n", now(), worker.uuid, ping);
             }
 
             @Override
             public void workerFailed(WorkerRecord worker) {
-                if(worker.isOnline()){
+                if (worker.isOnline()) {
                     worker.setState(WorkerState.OFFLINE);
-                    System.err.printf("[%s] Worker UUID %s is offline!",now(), worker.uuid);
+                    System.err.printf("[%s] Worker UUID %s is offline!", now(), worker.uuid);
                 }
             }
 
             @Override
             public void isConnected(WorkerRecord worker, long ping) {
                 worker.setState(WorkerState.ONLINE);
-                System.out.printf("[%s] Ping to %s is %d ms\n",now(), worker.uuid, ping);
+                System.out.printf("[%s] Ping to %s is %d ms\n", now(), worker.uuid, ping);
             }
         });
 
         registeredWorkers.put(id, record);
         try {
             worker.ping();
+            scheduler.putWorker(record);
             System.out.printf("Worker %s is online!\n", id);
         } catch (RuntimeException e) {
             record.setState(WorkerState.OFFLINE);
@@ -178,6 +196,7 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
             @Override
             public void onTransferComplete() {
                 record.setStatus(JobRecord.JobStatus.READY);
+                scheduler.putJob(record);
                 // Job is ready to be sent or whatever we want
                 // Handle by some other internal thread
                 // Maybe signal it somehow

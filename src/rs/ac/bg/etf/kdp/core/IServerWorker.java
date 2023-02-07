@@ -17,5 +17,6 @@ public interface IServerWorker extends IPingable, IUUIDPingable, Remote {
 	}
 
 	
-	void register(UUID id, IWorkerServer worker) throws AlreadyRegisteredException, RemoteException;
+	void register(UUID id, IWorkerServer worker, int concurrecy) throws AlreadyRegisteredException,
+			RemoteException;
 }

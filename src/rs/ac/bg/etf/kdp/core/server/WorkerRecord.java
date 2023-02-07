@@ -8,20 +8,37 @@ import rs.ac.bg.etf.kdp.utils.Configuration;
 
 class WorkerRecord {
 	public enum WorkerState {
-		ONLINE, UNAVAILABLE, OFFLINE
+		ONLINE, UNAVAILABLE, OFFLINE;
 	}
 
 	UUID uuid;
 	WorkerState state;
 	IWorkerServer handle;
 
+	private int maxConcurrency;
+	private int availableConcurrency;
+
 	private WorkerMonitor monitor;
 	private Instant deadline = null;
 
-	WorkerRecord(UUID uuid, IWorkerServer worker) {
+	WorkerRecord(UUID uuid, IWorkerServer worker,int concurrency) {
 		this.uuid = uuid;
 		this.handle = worker;
 		this.state = WorkerState.ONLINE;
+		this.maxConcurrency = concurrency;
+		this.availableConcurrency = concurrency;
+	}
+
+	public static int compare(WorkerRecord first, WorkerRecord second) {
+		return second.availableConcurrency - first.maxConcurrency;
+	}
+
+	public int getMaxConcurrency() {
+		return maxConcurrency;
+	}
+
+	public int getConcurrency() {
+		return availableConcurrency;
 	}
 
 	public void setDeadline() {
@@ -42,6 +59,10 @@ class WorkerRecord {
 
 	public boolean isOnline() {
 		return state == WorkerState.ONLINE;
+	}
+
+	public static boolean isOnline(WorkerRecord record){
+		return record.isOnline();
 	}
 
 	public void setState(WorkerState state) {
