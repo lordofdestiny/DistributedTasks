@@ -114,7 +114,7 @@ public class ClientApp {
 					@Override
 					public void onBlockUploadFailed(int blockNo) {
 						failCount += 1;
-						System.out.printf("Block No. %d failed %d times", blockNo, failCount);
+						System.out.printf("Block No. %d failed %d times\n", blockNo, failCount);
 					}
 
 					@Override
