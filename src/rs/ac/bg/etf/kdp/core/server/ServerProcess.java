@@ -143,7 +143,8 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
         }
         final var jobUUID = UUID.randomUUID();
         final var deadline = Instant.now().plus(2, ChronoUnit.MINUTES);
-        JobRecord record = new JobRecord(userId, jobUUID, deadline);
+        final var record = new JobRecord(userId, jobUUID, deadline);
+        client.currentJob = jobUUID;
         allJobs.put(jobUUID, record);
 
         final var downloader = new FileDownloader(record, new DownloadingListener() {
@@ -168,6 +169,7 @@ public class ServerProcess extends UnicastRemoteObject implements IServerWorker,
             public void onDeadlineExceeded() {
                 System.err.printf("Failed to receive job from %d.\n", record.userUUID);
                 allJobs.remove(record.jobUUID);
+                client.currentJob = null;
                 try {
                     Files.walk(record.rootDir).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
                 } catch (IOException e) {

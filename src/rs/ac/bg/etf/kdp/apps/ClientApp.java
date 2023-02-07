@@ -93,6 +93,10 @@ public class ClientApp {
 						"You need to authenticate in order to submit a job");
 				return;
 			}
+			if(job == null) {
+				frame.showErrorToClient("Unexpected error", "Please try to load the job again.");
+				return;
+			}
 			try {
 				final var prefix = "linda_job-";
 
@@ -106,11 +110,9 @@ public class ClientApp {
 					long totalSize = 0;
 					long failCount = 0;
 
-					TemporaryFiles tmp;
-
 					{
 						try {
-							totalSize = Files.size(tmp.getZip().toPath());
+							totalSize = Files.size(results.getZip().toPath());
 						} catch (IOException ignore) {
 						}
 						frame.setFileSizeText(String.format("%.2fKB", totalSize / 1024.0));
@@ -135,7 +137,7 @@ public class ClientApp {
 					@Override
 					public void onDeadlineExceeded() {
 						frame.promptTransferFailed("Time limit exceeded! Check your connection");
-						defaultCleanup(tmp.getDirectory());
+						defaultCleanup(results.getDirectory());
 					}
 
 					@Override
@@ -146,7 +148,7 @@ public class ClientApp {
 
 					@Override
 					public void onUploadComplete(long bytes) {
-						defaultCleanup(tmp.getDirectory());
+						defaultCleanup(results.getDirectory());
 						frame.promptTransferCompleteSucessfully();
 					}
 
@@ -160,9 +162,10 @@ public class ClientApp {
 				frame.showErrorToClient("Error",
 						"Failed during creation of temporary files. Try setting temporary directory.");
 			} catch (UnregisteredClientException e) {
-				throw new RuntimeException(e);
+				frame.showErrorToClient("Registration error", "Your did not register.");
 			} catch (MultipleJobsException e) {
-				throw new RuntimeException(e);
+				frame.showErrorToClient("Submission error", "You can't queue another job before " +
+						"the first one is complete");
 			}
 		});
 	}
