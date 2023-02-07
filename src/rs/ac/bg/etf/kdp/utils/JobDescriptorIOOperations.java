@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -24,6 +25,8 @@ public class JobDescriptorIOOperations {
 
 	public static List<Path> copyFilesToPath(Path destDir, JobDescriptor jobDescriptor)
 			throws IOException {
+		Objects.requireNonNull(destDir);
+		Objects.requireNonNull(jobDescriptor);
 		final var desc = JobDescriptor.resolveFileNames(jobDescriptor);
 
 		final var destinations = new ArrayList<Path>(8);
@@ -51,6 +54,8 @@ public class JobDescriptorIOOperations {
 	}
 
 	public static boolean generate(File location, JobDescriptor jobDescriptor) {
+		Objects.requireNonNull(location);
+		Objects.requireNonNull(jobDescriptor);
 		GsonBuilder gsonBuilder = new GsonBuilder();
 		gsonBuilder.setPrettyPrinting();
 		gsonBuilder.serializeNulls();
@@ -64,6 +69,7 @@ public class JobDescriptorIOOperations {
 	}
 
 	public static void deleteTempDirectory(Path dir) throws IOException {
+		Objects.requireNonNull(dir);
 		for (final var file : dir.toFile().listFiles()) {
 			file.delete();
 		}
@@ -89,6 +95,8 @@ public class JobDescriptorIOOperations {
 	}
 
 	public static TemporaryFiles createTempZip(JobDescriptor jrd, Path temp) throws IOException {
+		Objects.requireNonNull(jrd);
+		Objects.requireNonNull(temp);
 		System.out.println(temp.toString());// debugging
 
 		final var copyPaths = copyFilesToPath(temp, jrd);
