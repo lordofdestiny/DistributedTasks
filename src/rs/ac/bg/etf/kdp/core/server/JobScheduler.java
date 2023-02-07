@@ -43,7 +43,7 @@ public class JobScheduler extends Thread {
                 Thread.currentThread().interrupt();
                 e.printStackTrace();
             }
-            System.out.printf("Job %s ready!",job.jobUUID);
+            System.out.printf("Job %s ready!\n",job.jobUUID);
             do {
                 try {
                     worker = workers.take();
@@ -52,7 +52,7 @@ public class JobScheduler extends Thread {
                     e.printStackTrace();
                 }
             } while (worker != null && !worker.isOnline());
-            System.out.printf("Worker %s ready!",worker.uuid);
+            System.out.printf("Worker %s ready!\n",worker.uuid);
             handler.accept(worker,job);
         }
     }
