@@ -12,12 +12,17 @@ public class FileUploadHandle implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
-	private Instant deadline;
-	private IFileDownloader receiver;
+	private IFileDownloader receiver = null;
+	private Instant deadline = null;
+	private boolean valid = false;
+
+	public FileUploadHandle() {
+	}
 
 	public FileUploadHandle(IFileDownloader receiver, Instant deadline) {
 		this.receiver = receiver;
 		this.deadline = deadline;
+		valid = true;
 	}
 
 	public boolean uploadBytes(byte[] bytes, int bytesRead) throws DeadlineExceededException {
@@ -42,5 +47,9 @@ public class FileUploadHandle implements Serializable {
 		} catch (RemoteException e) {
 			return false;
 		}
+	}
+	
+	public boolean isValid() {
+		return valid;
 	}
 }

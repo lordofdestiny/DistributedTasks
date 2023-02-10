@@ -6,14 +6,29 @@ import java.io.Serializable;
 import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.time.Instant;
+import java.time.temporal.TemporalUnit;
 
 public interface IFileDownloader extends Remote, Serializable {
-	public interface IDownloadable {
-		Instant deadline();
+	public static class DownloadingToken {
+		private Instant deadline;
+		private File location;
 
-		boolean deadlineExceeded();
+		public DownloadingToken(File file, long duration, TemporalUnit unit) {
+			this.deadline = Instant.now().plus(duration, unit);
+			this.location = file;
+		}
 
-		File getFileLocation();
+		public Instant deadline() {
+			return deadline;
+		}
+
+		public boolean deadlineExceeded() {
+			return Instant.now().isAfter(deadline);
+		}
+
+		public File getFileLocation() {
+			return location;
+		}
 	}
 
 	public interface DownloadingListener {

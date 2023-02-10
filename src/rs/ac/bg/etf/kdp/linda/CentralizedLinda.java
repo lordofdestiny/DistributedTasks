@@ -112,9 +112,9 @@ public class CentralizedLinda implements Linda {
 		}
 	}
 
-	private void fill(String[] template, String[] data) {
+	private static void fill(String[] template, String[] data) {
 		Objects.requireNonNull(template);
-		Objects.requireNonNull(template);
+		Objects.requireNonNull(data);
 		for (int i = 0; i < template.length; i++) {
 			if (template[i] != null)
 				continue;

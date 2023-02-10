@@ -41,8 +41,8 @@ public class ConnectionMonitor extends Thread {
 				setConnected(false);
 				listeners.forEach(ConnectionListener::onConnectionLost);
 				try {
-					final var deadline =
-							Instant.now().plusSeconds(Configuration.SERVER_RECONNECTION_PERIOD);
+					final var deadline = Instant.now()
+							.plusSeconds(Configuration.SERVER_RECONNECTION_PERIOD);
 					reconnectToServer(deadline);
 					continue;
 				} catch (KillException e) {

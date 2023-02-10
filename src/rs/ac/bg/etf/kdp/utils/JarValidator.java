@@ -3,7 +3,7 @@ package rs.ac.bg.etf.kdp.utils;
 import java.io.File;
 import java.util.jar.JarFile;
 
-public class JarVerificator {
+public class JarValidator {
 	public static boolean isValidJar(File file) {
 		try (JarFile jarFile = new JarFile(file)) {
 			final var e = jarFile.entries();

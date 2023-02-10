@@ -1,7 +1,9 @@
 package rs.ac.bg.etf.kdp.core;
 
+import java.io.Serializable;
 import java.rmi.Remote;
 import java.rmi.RemoteException;
+import java.util.Objects;
 import java.util.UUID;
 
 public interface IServerWorker extends IPingable, IUUIDPingable, Remote {
@@ -15,8 +17,49 @@ public interface IServerWorker extends IPingable, IUUIDPingable, Remote {
 			super("Reconnection timeout has expired. Connection refused.");
 		}
 	}
-
 	
-	void register(UUID id, IWorkerServer worker, int concurrecy) throws AlreadyRegisteredException,
-			RemoteException;
+	public class WorkerRegistration implements Serializable{
+		private static final long serialVersionUID = 1L;
+		
+		private UUID uuid;
+		private String name = "Unknown";
+		private int concurrency = 1;
+		private IWorkerServer handle;
+		
+		public WorkerRegistration(UUID uuid, IWorkerServer handle) {
+			this.uuid = uuid;
+			this.handle = handle;
+		}
+		
+		public void setName(String name) {
+			Objects.requireNonNull(name);
+			this.name = name;
+		}
+		
+		public void setConcurrency(int concurrency) {
+			if(concurrency >= 1) {
+				this.concurrency = concurrency;
+			}
+		}
+		
+		public UUID getUUID() {
+			return uuid;
+		}
+		
+		public String getName() {
+			return name;
+		}
+		
+		public int getConcurrency() {
+			return concurrency;
+		}
+		
+		public IWorkerServer getHandle() {
+			return handle;
+		}
+				
+	}
+
+	void register(WorkerRegistration form)
+			throws AlreadyRegisteredException, RemoteException;
 }

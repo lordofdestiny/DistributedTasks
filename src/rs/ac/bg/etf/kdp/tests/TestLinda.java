@@ -1,14 +1,30 @@
 package rs.ac.bg.etf.kdp.tests;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Serializable;
+import java.nio.file.Files;
+import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
 import java.util.Arrays;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import rs.ac.bg.etf.kdp.linda.Linda;
-import rs.ac.bg.etf.kdp.linda.CentralizedLinda;
+import rs.ac.bg.etf.kdp.linda.TupleSpace;
 
 public class TestLinda {
 	public static final int iterations = 10;
-	private static final Linda ll = new CentralizedLinda();
+	private static Linda ll;
+	static {
+		try {
+			ll = TupleSpace.getLinda();
+		} catch (RemoteException | NotBoundException e) {
+			e.printStackTrace();
+			System.exit(0);
+		}
+	}
 
 	public static void main(String[] args) {
 		Object[] ca = {};
@@ -16,10 +32,38 @@ public class TestLinda {
 		ll.eval(TestLinda.class.getName(), ca, "threadA", ma);
 		ll.eval(TestLinda.class.getName(), ca, "threadB", ma);
 		ll.eval(TestLinda.class.getName(), ca, "threadC", ma);
+		ll.eval("Hello", (Runnable & Serializable) () -> System.out.println("Hello world!!!"));
+		try {
+			String hello = "Hello world";
+			FileWriter fw = new FileWriter(new File("Output.txt"));
+			fw.write(hello);
+			fw.flush();
+			fw.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		if (args.length >= 1) {
+			try (Stream<String> stream = Files.lines(new File(args[0]).toPath());
+					FileWriter fw = new FileWriter(new File("Output2.txt"))) {
+				stream.forEach((line) -> {
+					try {
+						fw.write(line);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				});
+				for (final var arg : args) {
+					System.out.println(arg);
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
 	}
 
 	@SuppressWarnings("unused")
-	public void threadA() {
+	public static void threadA() {
 		for (int i = 0; i < iterations; i++) {
 			ll.out(new String[] { "arg", String.valueOf(i), String.valueOf(i) });
 		}
@@ -42,7 +86,7 @@ public class TestLinda {
 	}
 
 	@SuppressWarnings("unused")
-	public void threadB() {
+	public static void threadB() {
 		for (int i = 0; i < iterations; i++) {
 			final var fmt = new String[] { "arg", null, String.valueOf(i) };
 			ll.in(fmt);
@@ -60,7 +104,7 @@ public class TestLinda {
 	}
 
 	@SuppressWarnings("unused")
-	public void threadC() {
+	public static void threadC() {
 		int sqsAcc = 0;
 		int fiboAcc = 0;
 		for (int i = 0; i < iterations; i++) {

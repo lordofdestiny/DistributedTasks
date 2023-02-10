@@ -1,8 +1,16 @@
 package rs.ac.bg.etf.kdp.utils;
 
-import java.io.*;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import com.google.gson.Gson;
@@ -61,14 +69,15 @@ public class JobDescriptor {
 
 	public JobDescriptor(String name, File jobJar, String mainClass, String args,
 			ArrayList<String> inFiles, ArrayList<String> outFiles) throws JobCreationException {
-		if (!jobJar.exists() || !JarVerificator.isValidJar(jobJar)
-				|| !JarVerificator.hasClass(jobJar, mainClass, false)) {
+		if (!jobJar.exists() || !JarValidator.isValidJar(jobJar)
+				|| !JarValidator.hasClass(jobJar, mainClass, false)) {
 			throw new JobCreationException("Bad JAR file");
 		}
 		this.name = name;
 		this.jobJar = jobJar.getName();
 		this.mainClass = mainClass;
-		this.args = args != null ? args.replaceAll("\\s+", " ").split(" ") : new String[0];
+		this.args = args != null && !args.isBlank() ? args.replaceAll("\\s+", " ").split(" ")
+				: new String[0];
 		this.files.in = inFiles != null
 				? inFiles.stream().filter(String::isBlank).toArray(String[]::new)
 				: new String[0];
@@ -78,12 +87,12 @@ public class JobDescriptor {
 		this.fromConstructor = true;
 	}
 
-	public static JobDescriptor parse(File file) throws IOException, JobCreationException,
-			JsonSyntaxException, JsonIOException {
+	public static JobDescriptor parse(File file)
+			throws IOException, JobCreationException, JsonSyntaxException, JsonIOException {
 		final var gson = new Gson();
 
 		JobDescriptor jd;
-		try(Reader reader = new FileReader(file)){
+		try (Reader reader = new FileReader(file)) {
 			jd = gson.fromJson(reader, JobDescriptor.class);
 			if (jd == null) {
 				throw new JobCreationException("Invalid file format");
@@ -121,6 +130,30 @@ public class JobDescriptor {
 		return files.out;
 	}
 
+	public Path getManifestDir() {
+		return confFileDir;
+	}
+
+	public boolean isValidFormat() {
+		return jobJar != null && mainClass != null
+				&& ((files == null) || files.in.length <= 6 && files.out.length <= 6);
+	}
+
+	public boolean hasValidFiles() {
+		return Stream.of(files.in).map(confFileDir::resolve).map(Path::toFile)
+				.allMatch(File::exists);
+	}
+
+	public boolean isValidJob() {
+		final var jarFile = confFileDir.resolve(jobJar).toFile();
+		return jarFile.exists() && JarValidator.isValidJar(jarFile);
+	}
+
+	public boolean hasValidMainClass() {
+		final var jarFile = confFileDir.resolve(jobJar).toFile();
+		return JarValidator.hasClass(jarFile, mainClass);
+	}
+
 	public static JobDescriptor resolveFileNames(JobDescriptor job) {
 		if (job.fromConstructor) {
 			return job;
@@ -139,4 +172,47 @@ public class JobDescriptor {
 		desc.files = new JobFiles(jobInFiles, job.files.out);
 		return desc;
 	}
+
+	private static Path resolve(Path srcDir, Path destDir, Path file) {
+		return destDir.resolve(srcDir.relativize(file));
+	}
+
+	public List<Path> copyFilesToDirectory(Path dir) throws IOException {
+		Objects.requireNonNull(dir);
+		final var desc = JobDescriptor.resolveFileNames(this);
+
+		final var destinations = new ArrayList<Path>(8);
+		// Copy manifest and JAR
+		final var confFileSrc = Path.of(desc.confFileName);
+		final var jarFileSrc = Path.of(desc.jobJar);
+		final var confFileDest = resolve(desc.confFileDir, dir, confFileSrc)
+				.resolveSibling("manifest.json");
+		final var jarFileDest = resolve(desc.confFileDir, dir, jarFileSrc);
+		destinations.add(jarFileDest);
+		destinations.add(confFileDest);
+		Files.copy(confFileSrc, confFileDest, REPLACE_EXISTING);
+		Files.copy(jarFileSrc, jarFileDest, REPLACE_EXISTING);
+
+		// Copy input files
+		try (final var files = Stream.of(desc.files.in).map(Path::of)) {
+			for (final var srcFile : (Iterable<Path>) files::iterator) {
+				final var dest = resolve(desc.confFileDir, dir, srcFile);
+				destinations.add(dest);
+				Files.copy(srcFile, dest, REPLACE_EXISTING);
+			}
+
+		}
+
+		return destinations;
+	}
+
+	public void copyInputFiles(Path dir) throws IOException {
+		try (final var inFiles = Stream.of(files.in).map(file -> confFileDir.resolve(file))) {
+			for (final var srcFile : (Iterable<Path>) inFiles::iterator) {
+				Path dest = resolve(confFileDir, dir, srcFile);
+				Files.copy(srcFile, dest, REPLACE_EXISTING);
+			}
+		}
+	}
+
 }

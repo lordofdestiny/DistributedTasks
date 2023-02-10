@@ -1,59 +1,73 @@
 package rs.ac.bg.etf.kdp.core.server;
 
-import java.rmi.RemoteException;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.function.BiConsumer;
 
+import rs.ac.bg.etf.kdp.core.server.ServerJobRecord.JobStatus;
+
 public class JobScheduler extends Thread {
-    private final BlockingQueue<WorkerRecord> workers =
-            new PriorityBlockingQueue<WorkerRecord>(10, WorkerRecord::compare);
-    private final BlockingQueue<JobRecord> jobs = new LinkedBlockingQueue<>();
-    private BiConsumer<WorkerRecord, JobRecord> handler = null;
+	private final BlockingQueue<WorkerRecord> workers = new LinkedBlockingQueue<>();
+	private final BlockingQueue<ServerJobRecord> jobs = new LinkedBlockingQueue<>();
+	private BiConsumer<WorkerRecord, ServerJobRecord> handler = null;
 
-    public void putJob(JobRecord record) {
-        jobs.offer(record);
-    }
+	public void putJob(ServerJobRecord record) {
+		record.setStatus(JobStatus.READY);
+		jobs.offer(record);
+	}
 
-    public void putWorker(WorkerRecord record) {
-        if (!workers.contains(record)) {
-            workers.offer(record);
-        }
-    }
+	public void putWorker(WorkerRecord record, boolean failed) {
+		if (record.isOnline() && !workers.contains(record)) {
+			record.decreaseActiveJobs();
+			workers.offer(record);
+			return;
+		}
+	}
 
-    public JobScheduler(BiConsumer<WorkerRecord, JobRecord> handler) {
-        this.handler = Objects.requireNonNull(handler);
-        start();
-    }
+	public void putWorker(WorkerRecord record) {
+		putWorker(record, false);
+	}
 
-    public void quit() {
-        interrupt();
-    }
+	public void setHandler(BiConsumer<WorkerRecord, ServerJobRecord> handler) {
+		this.handler = Objects.requireNonNull(handler);
+	}
 
-    @Override
-    public void run() {
-        while (true) {
-            JobRecord job = null;
-            WorkerRecord worker = null;
-            try {
-                job = jobs.take();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                e.printStackTrace();
-            }
-            System.out.printf("Job %s ready!\n",job.jobUUID);
-            do {
-                try {
-                    worker = workers.take();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    e.printStackTrace();
-                }
-            } while (worker != null && !worker.isOnline());
-            System.out.printf("Worker %s ready!\n",worker.uuid);
-            handler.accept(worker,job);
-        }
-    }
+	public void quit() {
+		interrupt();
+	}
+
+	@Override
+	public void run() {
+		if (handler == null) {
+			throw new RuntimeException(
+					"You have to set the error handler before starting the scheduler");
+		}
+		mainLoop:
+		while (true) {
+			ServerJobRecord job = null;
+			WorkerRecord worker = null;
+			try {
+				job = jobs.take();
+			} catch (InterruptedException e) {
+				break;
+			}
+			System.out.printf("Job %s ready!\n", job.jobUUID);
+			do {
+				try {
+					worker = workers.take();
+				} catch (InterruptedException e) {
+					break mainLoop;
+				}
+			} while (!worker.isOnline());
+			System.out.printf("Worker %s ready!\n", worker.getUUID());
+			job.setStatus(JobStatus.SCHEDULED);
+			worker.increaseActiveJobs();
+			if (worker.getConcurrency() > 0) {
+				putWorker(worker);
+			}
+			handler.accept(worker, job);
+		}
+		System.out.println("Scheduler shutdown...");
+	}
 }

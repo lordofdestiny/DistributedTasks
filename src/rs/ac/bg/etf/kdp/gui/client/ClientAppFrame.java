@@ -68,11 +68,10 @@ import rs.ac.bg.etf.kdp.core.IPingable;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider.ServerUnavailableException;
-import rs.ac.bg.etf.kdp.utils.JarVerificator;
+import rs.ac.bg.etf.kdp.utils.JarValidator;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor.JobCreationException;
-import rs.ac.bg.etf.kdp.utils.JobDescriptorIOOperations;
-import rs.ac.bg.etf.kdp.utils.JobDescriptorValidator;
+import rs.ac.bg.etf.kdp.utils.FileOperations;
 
 public class ClientAppFrame extends JFrame {
 	/**
@@ -137,7 +136,7 @@ public class ClientAppFrame extends JFrame {
 		connectionInfoReady = Objects.requireNonNull(listener);
 	}
 
-	public void setConnectListener(Runnable listener) {
+	public void setUserConnectListener(Runnable listener) {
 		connectReady = Objects.requireNonNull(listener);
 	}
 
@@ -744,10 +743,10 @@ public class ClientAppFrame extends JFrame {
 			btnClearConfig.setEnabled(true);
 			inputsSetEnabled(false);
 		} catch (FileNotFoundException e1) {
-			showErrorToClient("File error","Selected file could not be read");
+			showErrorToClient("File error", "Selected file could not be read");
 		} catch (JobCreationException | JsonSyntaxException | JsonIOException e2) {
 			showErrorToClient("File format error", "Bad JSON format.");
-		}catch (IOException e3){
+		} catch (IOException e3) {
 			showErrorToClient("File error", "Unknown file error occured...");
 		}
 	}
@@ -784,7 +783,7 @@ public class ClientAppFrame extends JFrame {
 			}
 		}
 
-		if (!JobDescriptorIOOperations.generate(location, jobDescriptor)) {
+		if (!FileOperations.generate(location, jobDescriptor)) {
 			showMessageDialog(ClientAppFrame.this, "Invalid pathname, try again", "ERROR",
 					ERROR_MESSAGE);
 			return;
@@ -798,21 +797,20 @@ public class ClientAppFrame extends JFrame {
 	}
 
 	private boolean verifyLoadedConfig(JobDescriptor jd) {
-		final var jdv = new JobDescriptorValidator(jd);
-		if (!jdv.isValidFormat()) {
+		if (!jd.isValidFormat()) {
 			showMessage(ERROR_MESSAGE, "File format error", "Some required fileds are missing.");
 			return false;
 		}
-		if (!jdv.isValidJob()) {
+		if (!jd.isValidJob()) {
 			showMessage(ERROR_MESSAGE, "Bad JAR file", "JAR file does not exist or is corrupted");
 			return false;
 		}
-		if (!jdv.hasValidMainClass()) {
+		if (!jd.hasValidMainClass()) {
 			showMessage(ERROR_MESSAGE, "Bad JAR file",
 					"JAR file does not have requrested .class file");
 			return false;
 		}
-		if (!jdv.hasValidFiles()) {
+		if (!jd.hasValidFiles()) {
 			showMessage(ERROR_MESSAGE, "File exists error",
 					"Some of the specified files do not exist.");
 			return false;
@@ -831,7 +829,7 @@ public class ClientAppFrame extends JFrame {
 			showMessage(WARNING_MESSAGE, "Bad input", "JAR file with given path does not exist");
 			return Optional.empty();
 		}
-		if (!JarVerificator.isValidJar(jarFile)) {
+		if (!JarValidator.isValidJar(jarFile)) {
 			showMessage(WARNING_MESSAGE, "Bad input", "Provided JAR file is corrupted");
 			return Optional.empty();
 		}
@@ -840,7 +838,7 @@ public class ClientAppFrame extends JFrame {
 			return Optional.empty();
 		}
 		String className = txtClassName.getText();
-		if (!JarVerificator.hasClass(jarFile, className)) {
+		if (!JarValidator.hasClass(jarFile, className)) {
 			showMessage(WARNING_MESSAGE, "Bad input",
 					"Class does not exist in the provided JAR file");
 			return Optional.empty();

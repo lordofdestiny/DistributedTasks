@@ -9,7 +9,9 @@ import rs.ac.bg.etf.kdp.utils.IFileDownloader.DeadlineExceededException;
 
 public class FileUploader extends Thread {
 	public interface UploadingListener {
-		void onFailedConnection();
+		default void onFailedConnection() {
+
+		}
 
 		default void onBlockUploadFailed(int blockNo) {
 
@@ -19,13 +21,17 @@ public class FileUploader extends Thread {
 
 		}
 
-		void onDeadlineExceeded();
+		default void onDeadlineExceeded() {
+
+		}
 
 		default void onIOException() {
 
 		}
 
-		void onUploadComplete(long bytes);
+		default void onUploadComplete(long bytes) {
+
+		}
 	}
 
 	private final File zipFile;
@@ -50,7 +56,7 @@ public class FileUploader extends Thread {
 			int blockNo = 0;
 			byte[] buffer = new byte[Configuration.MAX_BUFFER_SIZE];
 			while ((bytesRead = fis.read(buffer)) != -1) {
-				
+
 				while (!handle.uploadBytes(buffer, bytesRead)) {
 					listener.onBlockUploadFailed(blockNo);
 				}
@@ -61,9 +67,13 @@ public class FileUploader extends Thread {
 			while (!handle.confirmTransfer()) {
 			}
 		} catch (IOException e) {
+			e.printStackTrace();
+			System.exit(0);
 			listener.onIOException();
 			return;
 		} catch (DeadlineExceededException e) {
+			e.printStackTrace();
+			System.exit(0);
 			listener.onDeadlineExceeded();
 			return;
 		}

@@ -8,10 +8,8 @@ import java.rmi.NoSuchObjectException;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.rmi.server.Unreferenced;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.filechooser.FileSystemView;
 
@@ -21,8 +19,8 @@ import com.google.gson.JsonSyntaxException;
 import rs.ac.bg.etf.kdp.core.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.core.IClientServer;
 import rs.ac.bg.etf.kdp.core.IServerClient;
-import rs.ac.bg.etf.kdp.core.IServerClient.UnregisteredClientException;
 import rs.ac.bg.etf.kdp.core.IServerClient.MultipleJobsException;
+import rs.ac.bg.etf.kdp.core.IServerClient.UnregisteredClientException;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
@@ -30,11 +28,11 @@ import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.FileUploadHandle;
 import rs.ac.bg.etf.kdp.utils.FileUploader;
-import rs.ac.bg.etf.kdp.utils.JobDescriptorIOOperations;
 import rs.ac.bg.etf.kdp.utils.FileUploader.UploadingListener;
+import rs.ac.bg.etf.kdp.utils.IFileDownloader.RemoteIOException;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor.JobCreationException;
-
+import rs.ac.bg.etf.kdp.utils.FileOperations;
 
 public class ClientProcess implements IClientServer, Unreferenced {
 	private ConnectionMonitor monitor = null;
@@ -51,7 +49,11 @@ public class ClientProcess implements IClientServer, Unreferenced {
 		return connectToServer(null);
 	}
 
-	public boolean connectToServer(List<ConnectionListener> listeners) {
+	public boolean connected() {
+		return server != null;
+	}
+
+	public boolean connectToServer(ConnectionListener listener) {
 		try {
 			server = ConnectionProvider.connect(conectionInfo, IServerClient.class);
 			UnicastRemoteObject.exportObject(this, 0);
@@ -60,8 +62,8 @@ public class ClientProcess implements IClientServer, Unreferenced {
 			return false;
 		}
 		monitor = new ConnectionMonitor(server, 5000, uuid);
-		if (listeners != null) {
-			listeners.forEach(monitor::addEventListener);
+		if (listener != null) {
+			monitor.addEventListener(listener);
 		}
 		monitor.start();
 		return true;
@@ -71,34 +73,34 @@ public class ClientProcess implements IClientServer, Unreferenced {
 		return monitor;
 	}
 
-	public FileUploader submitJob(File zipFile, UploadingListener cb) throws IServerClient.UnregisteredClientException, IServerClient.MultipleJobsException {
+	public FileUploader submitJob(File zipFile, UploadingListener cb)
+			throws UnregisteredClientException, MultipleJobsException, RemoteIOException {
 		FileUploadHandle handle = null;
 		try {
 			handle = server.registerJob(uuid);
 		} catch (RemoteException e) {
 			cb.onFailedConnection();
-		} catch (IServerClient.UnregisteredClientException e) {
-			throw e;
-		} catch (IServerClient.MultipleJobsException e) {
-			throw e;
 		}
+		
 		FileUploader uploader = new FileUploader(handle, zipFile, cb);
 		uploader.start();
 		return uploader;
 	}
 
 	public static void main(String[] args) {
-		final var cinfo = new ConnectionInfo("147.91.12.49", Configuration.SERVER_PORT);
+		final var cinfo = new ConnectionInfo("localhost", Configuration.SERVER_PORT);
 		ClientProcess cp = new ClientProcess(UUID.randomUUID(), cinfo);
-		final var listeners = new ArrayList<ConnectionListener>(1);
-		listeners.add(new ConnectionListener() {
+		AtomicBoolean online = new AtomicBoolean(false);
+		final var listener = new ConnectionListener() {
 			@Override
 			public void onConnected() {
+				online.set(true);
 				System.out.println("Connected!");
 			}
 
 			@Override
 			public void onPingComplete(long ping) {
+				online.set(true);
 				System.out.printf("Ping: %d ms\n", ping);
 			}
 
@@ -114,6 +116,7 @@ public class ClientProcess implements IClientServer, Unreferenced {
 
 			@Override
 			public void onReconnected(long ping) {
+				online.set(true);
 				System.out.printf("Reconnected, ping is %d ms\n", ping);
 			}
 
@@ -122,25 +125,30 @@ public class ClientProcess implements IClientServer, Unreferenced {
 				System.err.println("Reconnection failed!");
 				System.exit(0);
 			}
-		});
-		if (!cp.connectToServer(listeners)) {
+		};
+		if (!cp.connectToServer(listener)) {
 			System.err.println("Failed to connect to server!");
 			System.exit(0);
 		}
 
 		final var homeDir = FileSystemView.getFileSystemView().getHomeDirectory().toPath();
-		final var filePath = homeDir.resolve("test.json").toFile();
+		final var filePath = homeDir.resolve("Lindica.json").toFile();
+		Path tempDir = null;
 		try {
 			final var job = JobDescriptor.parse(filePath);
-			final var temp = Files.createTempDirectory(homeDir, "linda_job-");
-			final var results = JobDescriptorIOOperations.createTempZip(job, temp);
-			final var uploader = cp.submitJob(results.getZip(), new UploadingListener() {
+			tempDir = Files.createTempDirectory(homeDir, "linda_job-");
+			final var copies = job.copyFilesToDirectory(tempDir);
+			final var zipFile = tempDir.resolve("job.zip").toFile();
+			FileOperations.zip(copies, zipFile);
+
+			final var temp = tempDir;
+			final var uploader = cp.submitJob(zipFile, new UploadingListener() {
 				long bytesUploaded = 0;
 				long totalSize = 0;
 				long failCount = 0;
 				{
 					try {
-						totalSize = Files.size(results.getZip().toPath());
+						totalSize = Files.size(zipFile.toPath());
 					} catch (IOException ignore) {
 					}
 					System.out.printf("Upload size: %.2fKB\n", totalSize / 1024.0);
@@ -163,8 +171,7 @@ public class ClientProcess implements IClientServer, Unreferenced {
 				public void onDeadlineExceeded() {
 					System.err.println("Time limit exceeded! Check your connection");
 					try {
-						if (Files.walk(results.getDirectory()).sorted(Comparator.reverseOrder())
-								.map(Path::toFile).map(File::delete).allMatch(b -> b)) {
+						if (FileOperations.deleteDirectory(temp)) {
 							System.out.println("All files deleted successfuly!");
 						} else {
 							System.out.println("Failed to delete some files!");
@@ -183,8 +190,7 @@ public class ClientProcess implements IClientServer, Unreferenced {
 				@Override
 				public void onUploadComplete(long bytes) {
 					try {
-						if (Files.walk(results.getDirectory()).sorted(Comparator.reverseOrder())
-								.map(Path::toFile).map(File::delete).allMatch(b -> b)) {
+						if (FileOperations.deleteDirectory(temp)) {
 							System.out.println("All files deleted successfuly!");
 						} else {
 							System.out.println("Failed to delete some files!");
@@ -207,9 +213,16 @@ public class ClientProcess implements IClientServer, Unreferenced {
 				System.err.println("Unexpectedly interrupted!");
 			}
 			cp.shutdown();
-		} catch (IOException | JsonSyntaxException | JsonIOException | JobCreationException |
-				 UnregisteredClientException | MultipleJobsException e) {
+		} catch (IOException | RemoteIOException | JsonSyntaxException | JsonIOException | JobCreationException
+				| UnregisteredClientException | MultipleJobsException e) {
 			System.out.println("Failed to do stuff");
+			if (tempDir != null) {
+				try {
+					FileOperations.deleteDirectory(tempDir);
+				} catch (IOException e1) {
+					System.err.println("Failed to delete temporary files!");
+				}
+			}
 			e.printStackTrace();
 		}
 	}

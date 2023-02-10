@@ -21,17 +21,17 @@ public class FileDownloader extends UnicastRemoteObject implements IFileDownload
 			.newScheduledThreadPool(1);
 	private static final ExecutorService deadlineHandlingPool = Executors.newCachedThreadPool();
 
-	private IDownloadable record;
+	private DownloadingToken token;
 	private DownloadingListener listener;
 	private boolean complete = false;
 	private boolean deadlineExceeded = false;
 	private ReentrantLock lock = new ReentrantLock();
 
-	public FileDownloader(IDownloadable record, DownloadingListener listener)
+	public FileDownloader(DownloadingToken token, DownloadingListener listener)
 			throws RemoteException {
-		this.record = record;
+		this.token = token;
 		this.listener = listener;
-		final var delay = Duration.between(Instant.now(), record.deadline());
+		final var delay = Duration.between(Instant.now(), token.deadline());
 		deadlineSignalingPool.schedule(() -> {
 			final boolean locked = lock.tryLock();
 			deadlineHandlingPool.submit(() -> {
@@ -56,13 +56,13 @@ public class FileDownloader extends UnicastRemoteObject implements IFileDownload
 			throws RemoteException, RemoteIOException, DeadlineExceededException {
 		lock.lock();
 		try {
-			if (record.deadlineExceeded() || deadlineExceeded) {
+			if (token.deadlineExceeded() || deadlineExceeded) {
 				throw new DeadlineExceededException();
 			}
 		} finally {
 			lock.unlock();
 		}
-		try (final var fos = new FileOutputStream(record.getFileLocation(), true)) {
+		try (final var fos = new FileOutputStream(token.getFileLocation(), true)) {
 			fos.write(bytes, 0, bytesRead);
 		} catch (IOException e) {
 			throw new RemoteIOException(e);
@@ -74,7 +74,7 @@ public class FileDownloader extends UnicastRemoteObject implements IFileDownload
 	public void confirmTransfer() throws RemoteException, DeadlineExceededException {
 		lock.lock();
 		try {
-			if (record.deadlineExceeded() || deadlineExceeded) {
+			if (token.deadlineExceeded() || deadlineExceeded) {
 				throw new DeadlineExceededException();
 			}
 			complete = true;

@@ -1,8 +1,13 @@
 package rs.ac.bg.etf.kdp.core.server;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
+import rs.ac.bg.etf.kdp.core.IServerWorker.WorkerRegistration;
 import rs.ac.bg.etf.kdp.core.IWorkerServer;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 
@@ -11,26 +16,61 @@ class WorkerRecord {
 		ONLINE, UNAVAILABLE, OFFLINE;
 	}
 
-	UUID uuid;
-	WorkerState state;
-	IWorkerServer handle;
+	private UUID uuid;
+	private WorkerState state;
+	private IWorkerServer handle;
 
+	// Scheduler
 	private int maxConcurrency;
-	private int availableConcurrency;
+	private AtomicInteger availableConcurrency;
 
+	// Monitoring
+	private Lock stateLock = new ReentrantLock();
 	private WorkerMonitor monitor;
 	private Instant deadline = null;
 
-	WorkerRecord(UUID uuid, IWorkerServer worker,int concurrency) {
-		this.uuid = uuid;
-		this.handle = worker;
+	WorkerRecord(WorkerRegistration registration) {
 		this.state = WorkerState.ONLINE;
-		this.maxConcurrency = concurrency;
-		this.availableConcurrency = concurrency;
+		this.uuid = registration.getUUID();
+		this.handle = registration.getHandle();
+//		this.maxConcurrency = registration.getConcurrency();
+		this.maxConcurrency = 10;
+		this.availableConcurrency = new AtomicInteger(maxConcurrency);
 	}
 
-	public static int compare(WorkerRecord first, WorkerRecord second) {
-		return second.availableConcurrency - first.maxConcurrency;
+	public UUID getUUID() {
+		return uuid;
+	}
+
+	public void setState(WorkerState state) {
+		stateLock.lock();
+		try {
+			this.state = state;
+		} finally {
+			stateLock.unlock();
+		}
+	}
+
+	public WorkerState getState() {
+		stateLock.lock();
+		try {
+			return state;
+		} finally {
+			stateLock.lock();
+		}
+	}
+
+	public boolean isOnline() {
+		stateLock.lock();
+		try {
+			return Objects.equals(state, WorkerState.ONLINE);
+		} finally {
+			stateLock.unlock();
+		}
+	}
+
+	public IWorkerServer getHandle() {
+		return handle;
 	}
 
 	public int getMaxConcurrency() {
@@ -38,7 +78,27 @@ class WorkerRecord {
 	}
 
 	public int getConcurrency() {
-		return availableConcurrency;
+		return availableConcurrency.get();
+	}
+
+	public int increaseActiveJobs() {
+		return availableConcurrency.updateAndGet(value -> {
+			if (value < maxConcurrency) {
+				return value + 1;
+			} else {
+				return value;
+			}
+		});
+	}
+
+	public int decreaseActiveJobs() {
+		return availableConcurrency.updateAndGet(value -> {
+			if (value > 0) {
+				return value - 1;
+			} else {
+				return value;
+			}
+		});
 	}
 
 	public void setDeadline() {
@@ -49,32 +109,16 @@ class WorkerRecord {
 		return Instant.now().isAfter(deadline);
 	}
 
-	public UUID getUUID() {
-		return uuid;
-	}
-
-	public IWorkerServer getHandle() {
-		return handle;
-	}
-
-	public boolean isOnline() {
-		return state == WorkerState.ONLINE;
-	}
-
-	public static boolean isOnline(WorkerRecord record){
-		return record.isOnline();
-	}
-
-	public void setState(WorkerState state) {
-		this.state = state;
-	}
-
-	public WorkerState getState() {
-		return state;
-	}
-
-	public void initializeMonitor(int interval, WorkerStateListener listner) {
-		this.monitor = new WorkerMonitor(this, interval, listner);
+	public void initializeMonitor(WorkerStateListener listener, int interval) {
+		if (monitor != null) {
+			return;
+		}
+		Objects.requireNonNull(listener);
+		this.monitor = new WorkerMonitor(this, listener, interval);
 		this.monitor.start();
+	}
+
+	public WorkerMonitor getMonitor() {
+		return monitor;
 	}
 }
