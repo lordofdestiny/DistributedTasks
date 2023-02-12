@@ -5,7 +5,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.BiConsumer;
 
-import rs.ac.bg.etf.kdp.core.server.ServerJobRecord.JobStatus;
+import rs.ac.bg.etf.kdp.utils.JobStatus;
 
 public class JobScheduler extends Thread {
 	private final BlockingQueue<WorkerRecord> workers = new LinkedBlockingQueue<>();
@@ -18,10 +18,12 @@ public class JobScheduler extends Thread {
 	}
 
 	public void putWorker(WorkerRecord record, boolean failed) {
-		if (record.isOnline() && !workers.contains(record)) {
-			record.decreaseActiveJobs();
-			workers.offer(record);
+		if (!record.isOnline()) {
 			return;
+		}
+		record.decreaseActiveJobs();
+		if (!workers.contains(record)) {
+			workers.offer(record);
 		}
 	}
 
@@ -52,7 +54,6 @@ public class JobScheduler extends Thread {
 			} catch (InterruptedException e) {
 				break;
 			}
-			System.out.printf("Job %s ready!\n", job.jobUUID);
 			do {
 				try {
 					worker = workers.take();
@@ -60,7 +61,8 @@ public class JobScheduler extends Thread {
 					break mainLoop;
 				}
 			} while (!worker.isOnline());
-			System.out.printf("Worker %s ready!\n", worker.getUUID());
+			System.out.println(
+					String.format("Scheduled job %s on %s...", job.jobUUID, worker.getUUID()));
 			job.setStatus(JobStatus.SCHEDULED);
 			worker.increaseActiveJobs();
 			if (worker.getConcurrency() > 0) {

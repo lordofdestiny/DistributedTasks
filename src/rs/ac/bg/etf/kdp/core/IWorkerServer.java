@@ -47,9 +47,9 @@ public interface IWorkerServer extends IPingable, Remote {
 		}
 	}
 
-	FileUploadHandle scheduleJobShard(UUID userUUID, UUID mainJobUUID, UUID jobUUID,
-			JobShardArgs args) throws RemoteException, MarshalException, UnmarshalException;
+	FileUploadHandle scheduleJobShard(JobAuthenticator auth, JobShardArgs args)
+			throws RemoteException, MarshalException, UnmarshalException;
 
-	FileUploadHandle scheduleRunnableJobShard(UUID userUUID, UUID mainJobUUID, UUID jobUUID,
-			String name, Runnable task) throws RemoteException;
+	FileUploadHandle scheduleRunnableJobShard(JobAuthenticator auth, String name, Runnable task)
+			throws RemoteException;
 }

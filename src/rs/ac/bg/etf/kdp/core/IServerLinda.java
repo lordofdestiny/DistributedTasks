@@ -2,7 +2,6 @@ package rs.ac.bg.etf.kdp.core;
 
 import java.rmi.Remote;
 import java.rmi.RemoteException;
-import java.util.UUID;
 
 public interface IServerLinda extends Remote {
 	void out(String[] tuple) throws RemoteException;
@@ -15,8 +14,8 @@ public interface IServerLinda extends Remote {
 
 	String[] rdp(String[] tuple) throws RemoteException;
 
-	void eval(UUID userUUID, UUID mainJobUUID, String name, Runnable thread) throws Exception, RemoteException;
+	void eval(JobAuthenticator auth, String name, Runnable thread) throws Exception, RemoteException;
 
-	void eval(UUID userUUID, UUID mainJobUUID, String className, Object[] construct, String methodName, Object[] arguments)
+	void eval(JobAuthenticator auth, String className, Object[] construct, String methodName, Object[] arguments)
 			throws Exception, RemoteException;
 }

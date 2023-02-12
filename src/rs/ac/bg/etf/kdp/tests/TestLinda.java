@@ -26,13 +26,33 @@ public class TestLinda {
 		}
 	}
 
+	public static void throwRTE() {
+		throw new RuntimeException();
+	}
+
+	public static void recursive() {
+		final var fmt = new String[] { "counter", null };
+		ll.in(fmt);
+		int val = Integer.parseInt(fmt[1]);
+		System.out.println("I CALL " + val);
+		if (val < 2) {
+			Object[] ca = {};
+			Object[] ma = {};
+			ll.eval(TestLinda.class.getCanonicalName(), ca, "recursive", ma);
+			ll.out(new String[] { "counter", "" + (val + 1) });
+		}
+	}
+
 	public static void main(String[] args) {
 		Object[] ca = {};
 		Object[] ma = {};
-		ll.eval(TestLinda.class.getName(), ca, "threadA", ma);
-		ll.eval(TestLinda.class.getName(), ca, "threadB", ma);
-		ll.eval(TestLinda.class.getName(), ca, "threadC", ma);
+		ll.eval(TestLinda.class.getCanonicalName(), ca, "threadA", ma);
+		ll.eval(TestLinda.class.getCanonicalName(), ca, "threadB", ma);
+		ll.eval(TestLinda.class.getCanonicalName(), ca, "threadC", ma);
 		ll.eval("Hello", (Runnable & Serializable) () -> System.out.println("Hello world!!!"));
+//		ll.eval(TestLinda.class.getCanonicalName(), ca, "throwRTE", ma);
+		ll.out(new String[] { "counter", "0" });
+		ll.eval(TestLinda.class.getCanonicalName(), ca, "recursive", ma);
 		try {
 			String hello = "Hello world";
 			FileWriter fw = new FileWriter(new File("Output.txt"));

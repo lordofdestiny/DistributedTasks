@@ -1,9 +1,12 @@
 package rs.ac.bg.etf.kdp.core.server;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -12,11 +15,12 @@ import rs.ac.bg.etf.kdp.core.IWorkerServer;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 
 class WorkerRecord {
-	public enum WorkerState {
+	public static enum WorkerState {
 		ONLINE, UNAVAILABLE, OFFLINE;
 	}
 
 	private UUID uuid;
+	private Lock stateLock = new ReentrantLock();
 	private WorkerState state;
 	private IWorkerServer handle;
 
@@ -25,9 +29,11 @@ class WorkerRecord {
 	private AtomicInteger availableConcurrency;
 
 	// Monitoring
-	private Lock stateLock = new ReentrantLock();
-	private WorkerMonitor monitor;
+	private AtomicReference<WorkerMonitor> monitor = new AtomicReference<>();
 	private Instant deadline = null;
+
+	
+	private List<UUID> assignedJobs = new CopyOnWriteArrayList<>();
 
 	WorkerRecord(WorkerRegistration registration) {
 		this.state = WorkerState.ONLINE;
@@ -114,11 +120,33 @@ class WorkerRecord {
 			return;
 		}
 		Objects.requireNonNull(listener);
-		this.monitor = new WorkerMonitor(this, listener, interval);
-		this.monitor.start();
+		this.monitor.set(new WorkerMonitor(this, listener, interval));
+		this.monitor.get().start();
 	}
 
 	public WorkerMonitor getMonitor() {
-		return monitor;
+		return monitor.get();
+	}
+
+	public void killMonitor() {
+		monitor.getAndUpdate((monitor) -> {
+			if (monitor != null && !monitor.isKilled()) {
+				monitor.quit();
+			}
+			return null;
+		});
+	}
+
+	public void addAssignedJob(UUID jobUUID) {
+		assignedJobs.add(jobUUID);
+	}
+
+	public boolean removeAssignedJob(UUID jobUUID) {
+		return assignedJobs.remove(jobUUID);
+	}
+
+	public List<UUID> getAssignedJobs() {
+		return assignedJobs;
+
 	}
 }

@@ -44,6 +44,14 @@ public interface IServerClient extends IPingable, IUUIDPingable, Remote {
 
 	void unregister(UUID id) throws RemoteException, UnregisteredClientException;
 
-	FileUploadHandle registerJob(UUID userUUID)
-			throws RemoteException, UnregisteredClientException, MultipleJobsException, RemoteIOException;
+	FileUploadHandle registerJob(UUID userUUID) throws RemoteException, UnregisteredClientException,
+			MultipleJobsException, RemoteIOException;
+
+	static enum ResultRequestCode{
+		UNKNOWN,
+		READY,
+		FAILED
+	}
+	
+	ResultRequestCode requestResults(UUID userUUID) throws RemoteException;
 }

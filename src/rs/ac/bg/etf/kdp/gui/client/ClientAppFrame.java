@@ -16,17 +16,27 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Deque;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -45,13 +55,17 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.JTextPane;
 import javax.swing.JToggleButton;
+import javax.swing.JTree;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
 import javax.swing.UIManager;
@@ -60,18 +74,21 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeModel;
 
 import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
 
+import rs.ac.bg.etf.kdp.core.IClientServer.JobTreeNode;
 import rs.ac.bg.etf.kdp.core.IPingable;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider;
 import rs.ac.bg.etf.kdp.utils.ConnectionProvider.ServerUnavailableException;
+import rs.ac.bg.etf.kdp.utils.FileOperations;
 import rs.ac.bg.etf.kdp.utils.JarValidator;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor.JobCreationException;
-import rs.ac.bg.etf.kdp.utils.FileOperations;
 
 public class ClientAppFrame extends JFrame {
 	/**
@@ -90,10 +107,12 @@ public class ClientAppFrame extends JFrame {
 						public UUID id = null;
 					}
 					Temp temp = new Temp();
-					ClientAppFrame window = new ClientAppFrame(UUID::randomUUID, () -> temp.id);
+					ClientAppFrame window = new ClientAppFrame(new ReentrantLock(),
+							UUID::randomUUID, () -> temp.id);
 					window.setUUIDReadyListener((uuid) -> {
 						temp.id = uuid;
 					});
+					window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
 					window.setVisible(true);
 				} catch (Exception e) {
@@ -107,15 +126,19 @@ public class ClientAppFrame extends JFrame {
 
 	private final Supplier<UUID> newUUID;
 	private final Supplier<UUID> clientUUID;
+	private final ReentrantLock singleDialogLock;
+	private final AtomicReference<CompletableFuture<Integer>> taskFailedResponse = new AtomicReference<>();
 
 	/**
 	 * Create the application.
 	 */
-	public ClientAppFrame(Supplier<UUID> newUUID, Supplier<UUID> clientUUID) {
+	public ClientAppFrame(ReentrantLock singleDialogLock, Supplier<UUID> newUUID,
+			Supplier<UUID> clientUUID) {
 		Objects.requireNonNull(newUUID);
 		Objects.requireNonNull(clientUUID);
 		this.newUUID = newUUID;
 		this.clientUUID = clientUUID;
+		this.singleDialogLock = singleDialogLock;
 		initialize();
 	}
 
@@ -127,6 +150,10 @@ public class ClientAppFrame extends JFrame {
 	};
 	private Consumer<JobDescriptor> jobReady = (job) -> {
 	};
+	private Runnable fetchResults = () -> {
+
+	};
+	private boolean connected = false;
 
 	public void setUUIDReadyListener(Consumer<UUID> listener) {
 		uuidReady = Objects.requireNonNull(listener);
@@ -142,6 +169,10 @@ public class ClientAppFrame extends JFrame {
 
 	public void setJobDescriptorListener(Consumer<JobDescriptor> listener) {
 		jobReady = Objects.requireNonNull(listener);
+	}
+
+	public void setFetchResultsListener(Runnable listener) {
+		fetchResults = Objects.requireNonNull(listener);
 	}
 
 	private JPanel panelPing;
@@ -166,6 +197,14 @@ public class ClientAppFrame extends JFrame {
 	private JFileChooser chooser;
 	private FileNameExtensionFilter jsonFilter;
 	private JTabbedPane tabbedPane;
+	private JToggleButton tglBtnTemp;
+	private GridBagConstraints gbc_lblProgressText;
+	private JProgressBar uploadProgressBar;
+	private JLabel lblFileSizeValue;
+	private JLabel lblSizeTransfered;
+	private JTree jobTree;
+
+	private MessageConsole console;
 
 	private JobDescriptor jobDescriptor = null;
 
@@ -200,6 +239,15 @@ public class ClientAppFrame extends JFrame {
 		mntmConnect.addActionListener(this::promptGetConnectionInfo);
 		mntmConnect.setEnabled(false);
 		mnConnection.add(mntmConnect);
+
+		JMenuItem mntmFetchResult = new JMenuItem("Fetch Results");
+		mntmFetchResult.addActionListener(e -> {
+			if (!connected) {
+				return;
+			}
+			fetchResults.run();
+		});
+		mnConnection.add(mntmFetchResult);
 
 		Component horizontalGlue = Box.createHorizontalGlue();
 		menuBar.add(horizontalGlue);
@@ -618,14 +666,173 @@ public class ClientAppFrame extends JFrame {
 		gbc_horizontalStrut_4.gridx = 4;
 		gbc_horizontalStrut_4.gridy = 14;
 		panelNewJob.add(horizontalStrut_4, gbc_horizontalStrut_4);
-		JPanel panel2 = new JPanel();
-		tabbedPane.addTab("New tab", null, panel2, null);
-		GridBagLayout gbl_panel2 = new GridBagLayout();
-		gbl_panel2.columnWidths = new int[] { 0 };
-		gbl_panel2.rowHeights = new int[] { 0 };
-		gbl_panel2.columnWeights = new double[] { Double.MIN_VALUE };
-		gbl_panel2.rowWeights = new double[] { Double.MIN_VALUE };
-		panel2.setLayout(gbl_panel2);
+		JPanel panelActivity = new JPanel();
+		tabbedPane.addTab("Job activity", null, panelActivity, null);
+		GridBagLayout gbl_panelActivity = new GridBagLayout();
+		gbl_panelActivity.columnWidths = new int[] { 30, 74, 102, 1, 0, 30, 0 };
+		gbl_panelActivity.rowHeights = new int[] { 0, 0, 140, 0, 25, 0, 33, 0, 0 };
+		gbl_panelActivity.columnWeights = new double[] { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0,
+				Double.MIN_VALUE };
+		gbl_panelActivity.rowWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+				Double.MIN_VALUE };
+		panelActivity.setLayout(gbl_panelActivity);
+
+		Component verticalStrut_1 = Box.createVerticalStrut(20);
+		GridBagConstraints gbc_verticalStrut_1 = new GridBagConstraints();
+		gbc_verticalStrut_1.fill = GridBagConstraints.HORIZONTAL;
+		gbc_verticalStrut_1.gridwidth = 4;
+		gbc_verticalStrut_1.insets = new Insets(0, 0, 5, 5);
+		gbc_verticalStrut_1.gridx = 1;
+		gbc_verticalStrut_1.gridy = 0;
+		panelActivity.add(verticalStrut_1, gbc_verticalStrut_1);
+
+		JLabel lblFailedJobs = new JLabel("Current failed job");
+		GridBagConstraints gbc_lblFailedJobs = new GridBagConstraints();
+		gbc_lblFailedJobs.anchor = GridBagConstraints.WEST;
+		gbc_lblFailedJobs.insets = new Insets(0, 0, 5, 5);
+		gbc_lblFailedJobs.gridx = 1;
+		gbc_lblFailedJobs.gridy = 1;
+		panelActivity.add(lblFailedJobs, gbc_lblFailedJobs);
+
+		Component horizontalGlue_1 = Box.createHorizontalGlue();
+		GridBagConstraints gbc_horizontalGlue_1 = new GridBagConstraints();
+		gbc_horizontalGlue_1.fill = GridBagConstraints.HORIZONTAL;
+		gbc_horizontalGlue_1.insets = new Insets(0, 0, 5, 5);
+		gbc_horizontalGlue_1.gridx = 2;
+		gbc_horizontalGlue_1.gridy = 1;
+		panelActivity.add(horizontalGlue_1, gbc_horizontalGlue_1);
+
+		JLabel lblFailureCountL = new JLabel("Failed job count:");
+		GridBagConstraints gbc_lblFailureCountL = new GridBagConstraints();
+		gbc_lblFailureCountL.anchor = GridBagConstraints.EAST;
+		gbc_lblFailureCountL.insets = new Insets(0, 0, 5, 5);
+		gbc_lblFailureCountL.gridx = 3;
+		gbc_lblFailureCountL.gridy = 1;
+		panelActivity.add(lblFailureCountL, gbc_lblFailureCountL);
+
+		lblFailureCountValue = new JLabel("0");
+		GridBagConstraints gbc_lblFailureCountValue = new GridBagConstraints();
+		gbc_lblFailureCountValue.anchor = GridBagConstraints.EAST;
+		gbc_lblFailureCountValue.insets = new Insets(0, 0, 5, 5);
+		gbc_lblFailureCountValue.gridx = 4;
+		gbc_lblFailureCountValue.gridy = 1;
+		panelActivity.add(lblFailureCountValue, gbc_lblFailureCountValue);
+
+		Component horizontalStrut_6 = Box.createHorizontalStrut(20);
+		GridBagConstraints gbc_horizontalStrut_6 = new GridBagConstraints();
+		gbc_horizontalStrut_6.fill = GridBagConstraints.VERTICAL;
+		gbc_horizontalStrut_6.gridheight = 3;
+		gbc_horizontalStrut_6.insets = new Insets(0, 0, 5, 5);
+		gbc_horizontalStrut_6.gridx = 0;
+		gbc_horizontalStrut_6.gridy = 2;
+		panelActivity.add(horizontalStrut_6, gbc_horizontalStrut_6);
+
+		JScrollPane scrollPane = new JScrollPane();
+		GridBagConstraints gbc_scrollPane = new GridBagConstraints();
+		gbc_scrollPane.gridwidth = 4;
+		gbc_scrollPane.insets = new Insets(0, 0, 5, 5);
+		gbc_scrollPane.fill = GridBagConstraints.BOTH;
+		gbc_scrollPane.gridx = 1;
+		gbc_scrollPane.gridy = 2;
+		panelActivity.add(scrollPane, gbc_scrollPane);
+
+		jobTree = new JTree();
+		jobTree.setModel(new DefaultTreeModel(null));
+		scrollPane.setViewportView(jobTree);
+
+		Component horizontalStrut_5 = Box.createHorizontalStrut(20);
+		GridBagConstraints gbc_horizontalStrut_5 = new GridBagConstraints();
+		gbc_horizontalStrut_5.fill = GridBagConstraints.BOTH;
+		gbc_horizontalStrut_5.gridheight = 3;
+		gbc_horizontalStrut_5.insets = new Insets(0, 0, 5, 0);
+		gbc_horizontalStrut_5.gridx = 5;
+		gbc_horizontalStrut_5.gridy = 2;
+		panelActivity.add(horizontalStrut_5, gbc_horizontalStrut_5);
+
+		JButton btnAbandonJob = new JButton("Abandon job");
+		btnAbandonJob.addActionListener((e) -> {
+			if (taskFailedResponse.get() == null) {
+				return;
+			}
+
+//			process.abandonJob();
+//			Empty the queue!
+		});
+		GridBagConstraints gbc_btnAbandonJob = new GridBagConstraints();
+		gbc_btnAbandonJob.insets = new Insets(0, 0, 5, 5);
+		gbc_btnAbandonJob.gridx = 3;
+		gbc_btnAbandonJob.gridy = 3;
+		panelActivity.add(btnAbandonJob, gbc_btnAbandonJob);
+
+		JButton btnRestart = new JButton("Restart");
+		btnRestart.addActionListener(e -> {
+			if (taskFailedResponse.get() == null) {
+				return;
+			}
+//			process.restartTask()
+		});
+		GridBagConstraints gbc_btnRestart = new GridBagConstraints();
+		gbc_btnRestart.insets = new Insets(0, 0, 5, 5);
+		gbc_btnRestart.gridx = 4;
+		gbc_btnRestart.gridy = 3;
+		panelActivity.add(btnRestart, gbc_btnRestart);
+
+		JSeparator separator_2 = new JSeparator();
+		GridBagConstraints gbc_separator_2 = new GridBagConstraints();
+		gbc_separator_2.fill = GridBagConstraints.HORIZONTAL;
+		gbc_separator_2.gridwidth = 4;
+		gbc_separator_2.insets = new Insets(0, 0, 5, 5);
+		gbc_separator_2.gridx = 1;
+		gbc_separator_2.gridy = 4;
+		panelActivity.add(separator_2, gbc_separator_2);
+
+		JLabel lblLog = new JLabel("Event log");
+		GridBagConstraints gbc_lblLog = new GridBagConstraints();
+		gbc_lblLog.insets = new Insets(0, 0, 5, 5);
+		gbc_lblLog.gridx = 1;
+		gbc_lblLog.gridy = 5;
+		panelActivity.add(lblLog, gbc_lblLog);
+
+		JScrollPane scrollPane_1 = new JScrollPane();
+		GridBagConstraints gbc_scrollPane_1 = new GridBagConstraints();
+		gbc_scrollPane_1.gridwidth = 4;
+		gbc_scrollPane_1.insets = new Insets(0, 0, 5, 5);
+		gbc_scrollPane_1.fill = GridBagConstraints.BOTH;
+		gbc_scrollPane_1.gridx = 1;
+		gbc_scrollPane_1.gridy = 6;
+		panelActivity.add(scrollPane_1, gbc_scrollPane_1);
+
+		JTextPane textPaneConsole = new JTextPane();
+		textPaneConsole.setEditable(false);
+		scrollPane_1.setViewportView(textPaneConsole);
+		console = new MessageConsole(textPaneConsole);
+
+		JPopupMenu popupMenu = new JPopupMenu();
+		addPopup(textPaneConsole, popupMenu);
+
+		JMenuItem mntmLogCopyAll = new JMenuItem("Copy all");
+		mntmLogCopyAll.addActionListener(e -> {
+			final var clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+			clipboard.setContents(new StringSelection(textPaneConsole.getText()), null);
+		});
+		popupMenu.add(mntmLogCopyAll);
+
+		JMenuItem mntmLogClear = new JMenuItem("Clear");
+		mntmLogClear.addActionListener(e -> {
+			textPaneConsole.setText(null);
+		});
+		popupMenu.add(mntmLogClear);
+		console.redirectErr(Color.RED, null);
+		console.redirectOut(Color.BLUE, null);
+
+		Component verticalStrut_2 = Box.createVerticalStrut(20);
+		GridBagConstraints gbc_verticalStrut_2 = new GridBagConstraints();
+		gbc_verticalStrut_2.fill = GridBagConstraints.VERTICAL;
+		gbc_verticalStrut_2.gridwidth = 4;
+		gbc_verticalStrut_2.insets = new Insets(0, 0, 0, 5);
+		gbc_verticalStrut_2.gridx = 1;
+		gbc_verticalStrut_2.gridy = 7;
+		panelActivity.add(verticalStrut_2, gbc_verticalStrut_2);
 
 		mntmGenerate.addActionListener(e -> {
 			if (clientUUID.get() != null) {
@@ -642,8 +849,10 @@ public class ClientAppFrame extends JFrame {
 				uuidNotNull();
 				return;
 			}
+			singleDialogLock.lock();
 			final var dialog = new EnterUUID(ClientAppFrame.this);
 			dialog.setVisible(true);
+			singleDialogLock.unlock();
 			dialog.getUUID().ifPresent(value -> {
 				uuidReady.accept(value);
 				moveUItoConnectionStage();
@@ -660,12 +869,14 @@ public class ClientAppFrame extends JFrame {
 
 	private void uuidNotNull() {
 		final var msg = "You already have a UUID, you can't generate a new one!";
-		showMessageDialog(ClientAppFrame.this, msg, "UUID already exists", ERROR_MESSAGE);
+		showMessage(ERROR_MESSAGE, "UUID already exists", msg);
 	}
 
 	private void displayUUID() {
+		singleDialogLock.lock();
 		final var dialog = new DisplayUUID(ClientAppFrame.this, clientUUID.get());
 		dialog.setVisible(true);
+		singleDialogLock.unlock();
 	}
 
 	public void setConnected() {
@@ -718,75 +929,77 @@ public class ClientAppFrame extends JFrame {
 		lblConnectionStatus.setForeground(Color.ORANGE);
 	}
 
-	private JToggleButton tglBtnTemp;
-	private GridBagConstraints gbc_lblProgressText;
-	private JProgressBar uploadProgressBar;
-	private JLabel lblFileSizeValue;
-	private JLabel lblSizeTransfered;
-
 	private void loadConfigHandler(ActionEvent e) {
+		singleDialogLock.lock();
 		chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 		chooser.setFileFilter(jsonFilter);
-		int result = chooser.showOpenDialog(ClientAppFrame.this);
-		if (result != JFileChooser.APPROVE_OPTION)
-			return;
-		File selectedFile = chooser.getSelectedFile();
 		try {
-			final var jd = JobDescriptor.parse(selectedFile);
-			if (!verifyLoadedConfig(jd)) {
+			int result = chooser.showOpenDialog(ClientAppFrame.this);
+			if (result != JFileChooser.APPROVE_OPTION)
 				return;
+			File selectedFile = chooser.getSelectedFile();
+			try {
+				final var jd = JobDescriptor.parse(selectedFile);
+				if (!verifyLoadedConfig(jd)) {
+					return;
+				}
+				jobDescriptor = jd;
+				populateNewJobFields();
+				btnSubmit.setEnabled(true);
+				btnVerifyConfig.setEnabled(false);
+				btnClearConfig.setEnabled(true);
+				inputsSetEnabled(false);
+			} catch (FileNotFoundException e1) {
+				showErrorToClient("File error", "Selected file could not be read");
+			} catch (JobCreationException | JsonSyntaxException | JsonIOException e2) {
+				showErrorToClient("File format error", "Bad JSON format.");
+			} catch (IOException e3) {
+				showErrorToClient("File error", "Unknown file error occured...");
 			}
-			jobDescriptor = jd;
-			populateNewJobFields();
-			btnSubmit.setEnabled(true);
-			btnVerifyConfig.setEnabled(false);
-			btnClearConfig.setEnabled(true);
-			inputsSetEnabled(false);
-		} catch (FileNotFoundException e1) {
-			showErrorToClient("File error", "Selected file could not be read");
-		} catch (JobCreationException | JsonSyntaxException | JsonIOException e2) {
-			showErrorToClient("File format error", "Bad JSON format.");
-		} catch (IOException e3) {
-			showErrorToClient("File error", "Unknown file error occured...");
+		} finally {
+			singleDialogLock.unlock();
 		}
 	}
 
 	private void saveConfigHandler(ActionEvent e) {
-		if (jobDescriptor == null) {
-			final var jdo = verifyCustomConfig();
-			if (jdo.isEmpty())
+		singleDialogLock.lock();
+		try {
+			if (jobDescriptor == null) {
+				final var jdo = verifyCustomConfig();
+				if (jdo.isEmpty())
+					return;
+				jobDescriptor = jdo.get();
+			}
+			chooser.removeChoosableFileFilter(jsonFilter);
+			chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+			int option = chooser.showDialog(ClientAppFrame.this, "Select output directory");
+			if (option != JFileChooser.APPROVE_OPTION)
 				return;
-			jobDescriptor = jdo.get();
-		}
-		chooser.removeChoosableFileFilter(jsonFilter);
-		chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-		int option = chooser.showDialog(ClientAppFrame.this, "Select output directory");
-		if (option != JFileChooser.APPROVE_OPTION)
-			return;
 
-		String defaultName = jobDescriptor.getName();
-		String timestampName = String.valueOf(new Date().getTime());
-		String name = defaultName.isBlank() ? timestampName : defaultName;
-		String result = (String) JOptionPane.showInputDialog(ClientAppFrame.this, "Enter file name",
-				"Save", PLAIN_MESSAGE, null, null, name.concat(".json"));
-
-		if (result == null) {
-			return;
-		}
-
-		File location = new File(chooser.getSelectedFile(), result);
-		if (location.exists()) {
-			int yesno = showConfirmDialog(ClientAppFrame.this, "File already exist, overwrite?",
-					"Save", YES_NO_OPTION);
-			if (yesno != YES_OPTION) {
+			String defaultName = jobDescriptor.getName();
+			String timestampName = String.valueOf(new Date().getTime());
+			String name = defaultName.isBlank() ? timestampName : defaultName;
+			String result = (String) JOptionPane.showInputDialog(ClientAppFrame.this,
+					"Enter file name", "Save", PLAIN_MESSAGE, null, null, name.concat(".json"));
+			if (result == null) {
 				return;
 			}
-		}
 
-		if (!FileOperations.generate(location, jobDescriptor)) {
-			showMessageDialog(ClientAppFrame.this, "Invalid pathname, try again", "ERROR",
-					ERROR_MESSAGE);
-			return;
+			File location = new File(chooser.getSelectedFile(), result);
+			if (location.exists()) {
+				int yesno = showConfirmDialog(ClientAppFrame.this, "File already exist, overwrite?",
+						"Save", YES_NO_OPTION);
+				if (yesno != YES_OPTION) {
+					return;
+				}
+			}
+
+			if (!FileOperations.generate(location, jobDescriptor)) {
+				showErrorToClient("ERROR", "Invalid pathname, try again");
+				return;
+			}
+		} finally {
+			singleDialogLock.unlock();
 		}
 		jobDescriptor = null;
 		btnLoadConfig.setEnabled(true);
@@ -875,6 +1088,7 @@ public class ClientAppFrame extends JFrame {
 			}
 		}, () -> {
 			connectReady.run();
+			connected = true;
 			mntmConnect.setEnabled(false);
 		});
 		dialog.setVisible(true);
@@ -930,11 +1144,19 @@ public class ClientAppFrame extends JFrame {
 	}
 
 	private void showMessage(int type, String title, String text) {
+		singleDialogLock.lock();
 		showMessageDialog(ClientAppFrame.this, text, title, type);
+		singleDialogLock.unlock();
+	}
+
+	public void showNotification(String title, String text) {
+		showMessage(PLAIN_MESSAGE, title, text);
 	}
 
 	public void showErrorToClient(String title, String text) {
+		singleDialogLock.lock();
 		showMessage(ERROR_MESSAGE, title, text);
+		singleDialogLock.unlock();
 	}
 
 	public boolean tempOnDesktop() {
@@ -954,7 +1176,9 @@ public class ClientAppFrame extends JFrame {
 	}
 
 	public void promptTransferCompleteSucessfully() {
+		singleDialogLock.lock();
 		showMessage(PLAIN_MESSAGE, "Complete", "Job sent sucessfully, you are free to log out.");
+		singleDialogLock.unlock();
 		clearNewJobFields();
 		lblFileSizeValue.setText("???");
 		uploadProgressBar.setValue(0);
@@ -962,9 +1186,78 @@ public class ClientAppFrame extends JFrame {
 	}
 
 	public void promptTransferFailed(String message) {
+		singleDialogLock.lock();
 		showMessage(WARNING_MESSAGE, "Upload failed", message);
+		singleDialogLock.unlock();
 		lblFileSizeValue.setText("???");
 		uploadProgressBar.setValue(0);
 		lblSizeTransfered.setText("0B");
+	}
+
+	private Lock treeLock = new ReentrantLock();
+	private JLabel lblFailureCountValue;
+
+	public void acceptTree(JobTreeNode node, CompletableFuture<Integer> future) {
+		// TODO REMEMBER TO DECREMENT ELSEWHERE
+		synchronized (lblFailureCountValue) {
+			final var current = Integer.valueOf(lblFailureCountValue.getText().strip());
+			lblFailureCountValue.setText(String.valueOf(current + 1));
+		}
+		class Pair {
+			JobTreeNode dataNode;
+			DefaultMutableTreeNode displayNode;
+
+			Pair(JobTreeNode data, DefaultMutableTreeNode display) {
+				this.dataNode = data;
+				this.displayNode = display;
+			}
+		}
+
+		taskFailedResponse.set(future);
+
+		treeLock.lock();
+		try {
+
+			Deque<Pair> stack = new ArrayDeque<>();
+			var root = new DefaultMutableTreeNode(node);
+			stack.push(new Pair(node, root));
+
+			while (!stack.isEmpty()) {
+				var pair = stack.pop();
+
+				var children = pair.dataNode.children;
+
+				for (int i = children.length - 1; i >= 0; i--) {
+					var child = children[i];
+					var displayChild = new DefaultMutableTreeNode(child);
+					pair.displayNode.add(displayChild);
+
+					stack.push(new Pair(child, displayChild));
+				}
+			}
+			jobTree.setModel(new DefaultTreeModel(root));
+		} finally {
+			treeLock.unlock();
+		}
+	}
+
+	private static void addPopup(Component component, final JPopupMenu popup) {
+		component.addMouseListener(new MouseAdapter() {
+			public void mousePressed(MouseEvent e) {
+				if (e.isPopupTrigger()) {
+					showMenu(e);
+				}
+			}
+
+			public void mouseReleased(MouseEvent e) {
+				if (e.isPopupTrigger()) {
+					showMenu(e);
+				}
+			}
+
+			private void showMenu(MouseEvent e) {
+				popup.show(e.getComponent(), e.getX(), e.getY());
+			}
+		});
 	}
 }

@@ -65,6 +65,7 @@ public class FileDownloader extends UnicastRemoteObject implements IFileDownload
 		try (final var fos = new FileOutputStream(token.getFileLocation(), true)) {
 			fos.write(bytes, 0, bytesRead);
 		} catch (IOException e) {
+			e.printStackTrace();
 			throw new RemoteIOException(e);
 		}
 		listener.onBytesReceived(bytesRead);

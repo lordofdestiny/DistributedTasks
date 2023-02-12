@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainJobTask extends JobTask{
-	public MainJobTask(WorkerJobRecord record) throws IOException {
-		super(record);
+import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
+
+public class MainJobTask extends JobTask {
+	public MainJobTask(WorkerJobRecord record, ConnectionInfo info) throws IOException {
+		super(record, info);
 	}
 
 	protected List<String> buildCommand() {

@@ -6,13 +6,14 @@ import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
-import rs.ac.bg.etf.kdp.utils.RunnableJobShardStarter;
+import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
+import rs.ac.bg.etf.kdp.utils.RunnableShardJobStarter;
 
 public class RunnableShardJobTask extends JobTask {
 
-	public RunnableShardJobTask(WorkerJobRecord record, String name, Runnable task)
-			throws IOException {
-		super(record);
+	public RunnableShardJobTask(WorkerJobRecord record, ConnectionInfo info, String name,
+			Runnable task) throws IOException {
+		super(record, info);
 		final var argBin = record.getWorkingDir().resolve("args.bin").toFile();
 		try (final var os = new FileOutputStream(argBin);
 				final var oos = new ObjectOutputStream(os)) {
@@ -27,7 +28,7 @@ public class RunnableShardJobTask extends JobTask {
 		list.add("java");
 		list.add("-cp");
 		list.add(jarFile.toString());
-		list.add(RunnableJobShardStarter.class.getCanonicalName());
+		list.add(RunnableShardJobStarter.class.getCanonicalName());
 		list.add("args.bin");
 		return list;
 	}

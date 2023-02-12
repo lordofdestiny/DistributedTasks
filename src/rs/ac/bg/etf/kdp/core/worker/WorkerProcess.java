@@ -11,26 +11,27 @@ import java.rmi.RemoteException;
 import java.rmi.UnmarshalException;
 import java.rmi.server.UnicastRemoteObject;
 import java.rmi.server.Unreferenced;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import javax.swing.filechooser.FileSystemView;
 
 import rs.ac.bg.etf.kdp.core.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.core.IServerWorker;
-import rs.ac.bg.etf.kdp.core.IServerWorker.WorkerRegistration;
 import rs.ac.bg.etf.kdp.core.IServerWorker.AlreadyRegisteredException;
+import rs.ac.bg.etf.kdp.core.IServerWorker.WorkerRegistration;
 import rs.ac.bg.etf.kdp.core.IWorkerServer;
+import rs.ac.bg.etf.kdp.core.JobAuthenticator;
 import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
@@ -39,10 +40,12 @@ import rs.ac.bg.etf.kdp.utils.ConnectionProvider.ServerUnavailableException;
 import rs.ac.bg.etf.kdp.utils.FileDownloader;
 import rs.ac.bg.etf.kdp.utils.FileOperations;
 import rs.ac.bg.etf.kdp.utils.FileUploadHandle;
-import rs.ac.bg.etf.kdp.utils.JobDescriptor;
+import rs.ac.bg.etf.kdp.utils.FileUploader;
+import rs.ac.bg.etf.kdp.utils.FileUploader.UploadingListener;
 import rs.ac.bg.etf.kdp.utils.IFileDownloader.DownloadingListener;
+import rs.ac.bg.etf.kdp.utils.IFileDownloader.DownloadingToken;
 import rs.ac.bg.etf.kdp.utils.IFileDownloader.RemoteIOException;
-import rs.ac.bg.etf.kdp.utils.IFileDownloader.DownloadingToken;;
+import rs.ac.bg.etf.kdp.utils.JobDescriptor;;
 
 public class WorkerProcess implements IWorkerServer, Unreferenced {
 	static {
@@ -52,14 +55,12 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 	public static final Path CHANGE_LATER_ROOT_DIR = FileSystemView.getFileSystemView()
 			.getHomeDirectory().toPath().resolve("Jobs");
 
-	private static final String DATE_FORMAT_STR = "dd.MM.YYYY. HH:mm:ss";
-	private static final DateFormat df = new SimpleDateFormat(DATE_FORMAT_STR);
-
 	private final ExecutorService jobCreationExecutor = Executors.newCachedThreadPool();
-	private final CompletionService<UUID> jobCreationCompletionService = new ExecutorCompletionService<>(
+	private final CompletionService<Void> jobCreationCompletionService = new ExecutorCompletionService<>(
 			jobCreationExecutor);
+
 	private final ExecutorService jobExecutor = Executors.newCachedThreadPool();
-	private final ExecutorCompletionService<UUID> jobExecutionCompletionService = new ExecutorCompletionService<>(
+	private final ExecutorCompletionService<Void> jobExecutionCompletionService = new ExecutorCompletionService<>(
 			jobExecutor);
 
 	private final Thread creationAwaiterThread = new Thread(this::jobCreationAwaiterLoop);
@@ -67,36 +68,72 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 
 	private final Map<UUID, WorkerJobRecord> registeredJobs = new ConcurrentHashMap<>();
 
-	private final UUID uuid = UUID.randomUUID();
-	private final String host;
-	private final int port;
+	private final Map<Future<Void>, WorkerJobRecord> futureOwners = new ConcurrentHashMap<>();
+
+	private final BlockingQueue<WorkerJobRecord> jobsForUploading = new LinkedBlockingQueue<>();
+	private final Thread jobResultUploadStarterThread = new Thread(this::jobUploadStarter);
+
+	private UUID uuid = UUID.randomUUID();
+	private ConnectionInfo connInfo;
 	private IServerWorker server = null;
 	private ConnectionMonitor monitor;
 
-	public WorkerProcess(String host, int port) {
-		this.host = host;
-		this.port = port;
+	public WorkerProcess(ConnectionInfo info) {
+		this.connInfo = info;
 		creationAwaiterThread.start();
 		executionAwaiterThread.start();
+		jobResultUploadStarterThread.start();
 	}
 
 	@Override
 	public void ping() {
 		if (monitor != null && monitor.connected()) {
-			System.out.printf("[%s]: Ping!\n", now());
+			System.out.println("Ping!");
 		}
 		try {
 			server.ping(uuid);
 		} catch (RemoteException e) {
-			System.err.printf("[%s]: Lost connection to server!", now());
+			System.err.println("Lost connection to server!");
 			System.err.println("Reconnecting...");
 		}
 	}
 
+	private final ConnectionListener connectionListener = new ConnectionListener() {
+		@Override
+		public void onConnected() {
+			System.out.println("Connected!!!");
+		}
+
+		@Override
+		public void onPingComplete(long ping) {
+			System.out.println(String.format("Ping is %d ms", ping));
+		}
+
+		@Override
+		public void onConnectionLost() {
+			System.err.println("Lost connection to server!");
+		}
+
+		@Override
+		public void onReconnecting() {
+			System.err.println("Reconnecting...");
+		}
+
+		@Override
+		public void onReconnected(long ping) {
+			System.out.println(String.format("Reconnected, ping is %d ms", ping));
+		}
+
+		@Override
+		public void onReconnectionFailed() {
+			System.err.println("Could not reconnect to server! Attempting to reconnect...");
+			System.exit(0);
+		}
+	};
+
 	private boolean connectToServer() {
 		try {
-			final var ci = new ConnectionInfo(host, port);
-			server = ConnectionProvider.connect(ci, IServerWorker.class);
+			server = ConnectionProvider.connect(connInfo, IServerWorker.class);
 			UnicastRemoteObject.exportObject(this, 0);
 			final var registration = new WorkerRegistration(uuid, this);
 			final var concurrency = Runtime.getRuntime().availableProcessors();
@@ -114,44 +151,9 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 			System.exit(0);
 		}
 		monitor = new ConnectionMonitor(server, Configuration.WORKER_PING_INTERVAL, uuid);
-		monitor.addEventListener(new ConnectionListener() {
-			@Override
-			public void onConnected() {
-				System.out.println("Connected!!!");
-			}
-
-			@Override
-			public void onPingComplete(long ping) {
-				System.out.printf("[%s]: Ping is %d ms\n", now(), ping);
-			}
-
-			@Override
-			public void onConnectionLost() {
-				System.err.println("Lost connection to server!");
-			}
-
-			@Override
-			public void onReconnecting() {
-				System.err.println("Reconnecting...");
-			}
-
-			@Override
-			public void onReconnected(long ping) {
-				System.out.printf("Reconnected, ping is %d ms\n", ping);
-			}
-
-			@Override
-			public void onReconnectionFailed() {
-				System.err.println("Could not reconnect to server! Exiting...");
-				System.exit(0);
-			}
-		});
+		monitor.addEventListener(connectionListener);
 		monitor.start();
 		return true;
-	}
-
-	private static String now() {
-		return df.format(new Date());
 	}
 
 	@Override
@@ -164,9 +166,9 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 
 	private class WorkerDownloadingListener implements DownloadingListener {
 		private WorkerJobRecord record;
-		private Callable<UUID> task;
+		private Callable<Void> task;
 
-		WorkerDownloadingListener(WorkerJobRecord record, Callable<UUID> task) {
+		WorkerDownloadingListener(WorkerJobRecord record, Callable<Void> task) {
 			this.record = record;
 			this.task = task;
 		}
@@ -174,12 +176,13 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 		@Override
 		public void onTransferComplete() {
 			System.out.println("Received job...");
-			jobCreationCompletionService.submit(task);
+			final var future = jobCreationCompletionService.submit(task);
+			futureOwners.put(future, record);
 		}
 
 		@Override
 		public void onDeadlineExceeded() {
-			System.err.printf("Failed to recieve job %s\n", record.getJobUUID());
+			System.err.println(String.format("Failed to recieve job %s", record.getJobUUID()));
 			registeredJobs.remove(record.getJobUUID());
 			try {
 				FileOperations.deleteDirectory(record.getMainDirectory());
@@ -190,7 +193,7 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 		}
 	}
 
-	private class ShardCreationTask implements Callable<UUID> {
+	private class ShardCreationTask implements Callable<Void> {
 		private WorkerJobRecord record;
 		private Callable<JobTask> getJob;
 		private boolean unzip;
@@ -202,7 +205,7 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 		}
 
 		@Override
-		public UUID call() throws Exception {
+		public Void call() throws Exception {
 			if (unzip) {
 				FileOperations.unzip(record.getZipLocation(), record.getMainDirectory());
 				Files.delete(record.getZipLocation().toPath());
@@ -212,14 +215,13 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 			record.setJobDescriptor(JobDescriptor.parse(manifest));
 
 			record.setTask(getJob.call());
-
-			return record.getJobUUID();
+			return null;
 		}
 
 	}
 
 	public FileUploadHandle makeFileUploadHandle(WorkerJobRecord record,
-			Callable<UUID> shardCreationTask) throws RemoteException {
+			Callable<Void> shardCreationTask) throws RemoteException {
 		final var token = new DownloadingToken(record.getZipLocation(), 2, ChronoUnit.MINUTES);
 		final var listener = new WorkerDownloadingListener(record, shardCreationTask);
 		final var downloader = new FileDownloader(token, listener);
@@ -229,7 +231,7 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 	@Override
 	public FileUploadHandle scheduleMainJob(UUID userUUID, UUID jobUUID)
 			throws RemoteException, RemoteIOException {
-		System.out.printf("Main job %s received\n", jobUUID);
+		System.out.println(String.format("Main job %s received", jobUUID));
 
 		final var record = new WorkerJobRecord(userUUID, jobUUID);
 		registeredJobs.put(jobUUID, record);
@@ -241,26 +243,29 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 		}
 
 		final var shardCreationTask = new ShardCreationTask(record, true,
-				() -> new MainJobTask(record));
+				() -> new MainJobTask(record, connInfo));
 
 		return makeFileUploadHandle(record, shardCreationTask);
 	}
 
 	@Override
-	public FileUploadHandle scheduleJobShard(UUID userUUID, UUID mainJobUUID, UUID jobUUID,
-			JobShardArgs args) throws RemoteException, MarshalException, UnmarshalException {
-		System.out.printf("Class shard %s from %s received\n",jobUUID, mainJobUUID);
+	public FileUploadHandle scheduleJobShard(JobAuthenticator auth, JobShardArgs args)
+			throws RemoteException, MarshalException, UnmarshalException {
+		System.out.println(
+				String.format("Class shard %s from %s received", auth.jobUUID, auth.mainJobUUID));
 
-		final var record = new WorkerJobRecord(userUUID, mainJobUUID, jobUUID);
-		registeredJobs.put(jobUUID, record);
+		final var record = new WorkerJobRecord(auth.userUUID, auth.mainJobUUID, auth.parentJobUUID,
+				auth.jobUUID);
+		registeredJobs.put(auth.jobUUID, record);
 
-		final var hasZip = registeredJobs.containsKey(mainJobUUID);
+		final var hasZip = registeredJobs.containsKey(auth.mainJobUUID);
 
 		final var shardCreationTask = new ShardCreationTask(record, !hasZip,
-				() -> new ShardJobTask(record, args));
+				() -> new ClassShardJobTask(record, connInfo, args));
 
 		if (hasZip) {
-			jobCreationCompletionService.submit(shardCreationTask);
+			final var future = jobCreationCompletionService.submit(shardCreationTask);
+			futureOwners.put(future, record);
 			return new FileUploadHandle();
 		}
 
@@ -268,19 +273,22 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 	}
 
 	@Override
-	public FileUploadHandle scheduleRunnableJobShard(UUID userUUID, UUID mainJobUUID, UUID jobUUID,
-			String name, Runnable task) throws RemoteException {
-		System.out.printf("Runnalbe shard %s from %s received\n",jobUUID, mainJobUUID);
-		final var record = new WorkerJobRecord(userUUID, mainJobUUID, jobUUID);
-		registeredJobs.put(jobUUID, record);
+	public FileUploadHandle scheduleRunnableJobShard(JobAuthenticator auth, String name,
+			Runnable task) throws RemoteException {
+		System.out.println(String.format("Runnalbe shard %s from %s received", auth.jobUUID,
+				auth.mainJobUUID));
+		final var record = new WorkerJobRecord(auth.userUUID, auth.mainJobUUID, auth.parentJobUUID,
+				auth.jobUUID);
+		registeredJobs.put(auth.jobUUID, record);
 
-		final var hasZip = registeredJobs.containsKey(mainJobUUID);
+		final var hasZip = registeredJobs.containsKey(auth.mainJobUUID);
 
 		final var shardCreationTask = new ShardCreationTask(record, !hasZip,
-				() -> new RunnableShardJobTask(record, name, task));
+				() -> new RunnableShardJobTask(record, connInfo, name, task));
 
 		if (hasZip) {
-			jobCreationCompletionService.submit(shardCreationTask);
+			final var future = jobCreationCompletionService.submit(shardCreationTask);
+			futureOwners.put(future, record);
 			return new FileUploadHandle();
 		}
 
@@ -290,17 +298,24 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 	private void jobCreationAwaiterLoop() {
 		while (true) {
 			try {
-				final var result = jobCreationCompletionService.take();
+				final var future = jobCreationCompletionService.take();
+				final var record = futureOwners.remove(future);
 				try {
-					final var jobUUID = result.get();
-					final var record = registeredJobs.get(jobUUID);
-					jobExecutionCompletionService.submit(() -> {
+					future.get();
+					final var jobFuture = jobExecutionCompletionService.submit(() -> {
 						record.getTask().getProcess().waitFor();
-						return jobUUID;
+						return null;
 					});
+					futureOwners.put(jobFuture, record);
 				} catch (Exception e) {
-					// Notify server that job could not be started
-					e.printStackTrace();
+					final var jobUUID = record.getJobUUID();
+					try {
+						// Notify server that job could not be started
+						server.reportJobFailedToStart(this.uuid, jobUUID);
+					} catch (RemoteException e1) {
+						System.err.println(String
+								.format("Failed to notify server that task %s failed", jobUUID));
+					}
 				}
 			} catch (InterruptedException e) {
 				break;
@@ -311,17 +326,31 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 	private void jobExecutionAwaiterLoop() {
 		while (true) {
 			try {
-				final var result = jobExecutionCompletionService.take();
+				final var future = jobExecutionCompletionService.take();
+				final var record = futureOwners.remove(future);
 				try {
-					final var jobUUID = result.get();
-					System.out.println("Job complete");
-					final var record = registeredJobs.get(jobUUID);
+					future.get();
+					if (record.getTask().getProcess().exitValue() != 0) {
+						throw new Exception("Job runtime failure");
+					}
+					System.out.println(String.format("Job %s complete", record.getJobUUID()));
 					record.generateResults();
-					
+					registeredJobs.remove(record.getJobUUID());
 					// Return files to server
+					jobsForUploading.add(record);
+				} catch (IOException e) {
+					// HANDLE THIS SOMEHOW !!!
+					System.err.println(String.format("Failed to return result for % to server",
+							record.getJobUUID()));
 				} catch (Exception e) {
-					// Notify server that the job crashed
-					e.printStackTrace();
+					System.out.println(String.format("Job %s failed.", record.getJobUUID()));
+					try {
+						server.reportJobFailed(this.uuid, record.getJobUUID());
+					} catch (RemoteException e1) {
+						System.err.println(
+								String.format("Failed to notify server that task %s failed",
+										record.getJobUUID()));
+					}
 				}
 			} catch (InterruptedException e) {
 				break;
@@ -329,8 +358,90 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 		}
 	}
 
+	private void jobUploadStarter() {
+		while (true) {
+			WorkerJobRecord job = null;
+			try {
+				job = jobsForUploading.take();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+
+			if (job.getUploadFailureCount() >= 5) {
+				System.err.println(String.format("Giving up on sending %s", job.getJobUUID()));
+				continue;
+			}
+
+			final var destination = job.getJobDirectory().resolve("results.zip");
+
+			if (!destination.toFile().exists()) {
+				try {
+					FileOperations.zipDirectory(job.getResultsDir(), destination.toFile());
+				} catch (IOException e) {
+					System.err.println(String.format("Failed to create results.zip for %s...",
+							job.getJobUUID()));
+					job.countUpUploadFailures();
+					jobsForUploading.add(job);
+				}
+			}
+
+			FileUploadHandle handle = null;
+			try {
+				handle = server.jobComplete(this.uuid, job.getJobUUID());
+			} catch (RemoteException e) {
+				System.err.println(
+						String.format("Failed to fetch upload handle for %s", job.getJobUUID()));
+				job.countUpUploadFailures();
+				jobsForUploading.add(job);
+			}
+
+			final WorkerJobRecord Job = job;
+			final var uploader = new FileUploader(handle, destination.toFile(),
+					new UploadingListener() {
+						public void onFailedConnection() {
+							System.err.println(String.format(
+									"Failed to connect to server while sending %s to server...",
+									Job.getJobUUID()));
+							Job.countUpUploadFailures();
+							jobsForUploading.add(Job);
+						}
+
+						public void onDeadlineExceeded() {
+							System.err.println(
+									String.format("Deadlin exceeded while sending %s to server...",
+											Job.getJobUUID()));
+							Job.countUpUploadFailures();
+							jobsForUploading.add(Job);
+						}
+
+						public void onIOException() {
+							System.err.println(String.format(
+									"File error while sending %s to server...", Job.getJobUUID()));
+							Job.countUpUploadFailures();
+							jobsForUploading.add(Job);
+						}
+
+						public void onUploadComplete(long bytes) {
+							System.out.println(String.format("Results for %s sent to server...",
+									Job.getJobUUID()));
+							try {
+								Files.delete(destination);
+							} catch (IOException e) {
+								System.err
+										.println(String.format("Failed to delete %s", destination));
+							}
+						}
+					});
+			uploader.start();
+
+			if (Thread.interrupted()) {
+				return;
+			}
+		}
+	}
+
 	public static void main(String[] args) {
-		WorkerProcess pw = new WorkerProcess("localhost", 8080);
+		WorkerProcess pw = new WorkerProcess(new ConnectionInfo("localhost", 8080));
 		if (!pw.connectToServer()) {
 			System.err.println("Failed to connect to server!");
 			System.exit(0);

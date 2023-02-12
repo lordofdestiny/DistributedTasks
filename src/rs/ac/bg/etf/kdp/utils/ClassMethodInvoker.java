@@ -1,5 +1,6 @@
 package rs.ac.bg.etf.kdp.utils;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.stream.Stream;
@@ -23,8 +24,10 @@ public class ClassMethodInvoker extends Thread {
 	public void run() {
 		try {
 			method.invoke(instance, methodArgs);
-		} catch (Exception e) {
-			e.printStackTrace();
+		} catch (InvocationTargetException e) {
+			throw new RuntimeException(e);
+		} catch (Exception roe) {
+			roe.printStackTrace();
 		}
 	}
 

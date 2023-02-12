@@ -18,7 +18,7 @@ class ClientAppConenctionListener implements ConnectionListener {
 
 	@Override
 	public void onPingComplete(long ping) {
-		System.out.printf("Ping: %d ms\n", ping);
+		System.out.println(String.format("Ping: %d ms", ping));
 		frame.updatePing(ping);
 	}
 
@@ -36,7 +36,7 @@ class ClientAppConenctionListener implements ConnectionListener {
 
 	@Override
 	public void onReconnected(long ping) {
-		System.out.printf("Reconnected, ping is %d ms\n", ping);
+		System.out.println(String.format("Reconnected, ping is %d ms", ping));
 		frame.setReconnected(ping);
 	}
 

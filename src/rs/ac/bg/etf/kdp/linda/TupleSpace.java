@@ -7,13 +7,17 @@ import java.util.Objects;
 import java.util.UUID;
 
 import rs.ac.bg.etf.kdp.core.IServerLinda;
+import rs.ac.bg.etf.kdp.core.JobAuthenticator;
 
 public class TupleSpace {
 	private static String HOST_ADDRESS;
 	private static String HOST_ROUTE;
 	private static int HOST_PORT;
 	private static UUID userUUID;
+	private static UUID jobUUID;
+	private static UUID parentJobUUID;
 	private static UUID mainJobUUID;
+	private static JobAuthenticator auth;
 
 	private static boolean isRemoteCall() {
 		final var rem = System.getenv("LINDA_REMOTE");
@@ -26,7 +30,11 @@ public class TupleSpace {
 			HOST_ROUTE = System.getenv("LINDA_ROUTE");
 			HOST_PORT = Integer.valueOf(System.getenv("LINDA_PORT"));
 			userUUID = UUID.fromString(System.getenv("LINDA_USER"));
+			jobUUID = UUID.fromString(System.getenv("LINDA_THIS_JOB"));
+			final var parent = System.getenv("LINDA_PARENT_JOB");
+			parentJobUUID = parent.equals("0") ? null : UUID.fromString(parent);
 			mainJobUUID = UUID.fromString(System.getenv("LINDA_MAIN_JOB"));
+			auth = new JobAuthenticator(userUUID, mainJobUUID, parentJobUUID, jobUUID);
 			System.setProperty("sun.rmi.transport.tcp.responseTimeout", "60000");
 		}
 	}
@@ -49,10 +57,6 @@ public class TupleSpace {
 		final var server = (IServerLinda) registry.lookup(HOST_ROUTE);
 
 		return new Linda() {
-
-			/**
-			 * 
-			 */
 			private static final long serialVersionUID = 1L;
 
 			@Override
@@ -120,7 +124,7 @@ public class TupleSpace {
 			@Override
 			public void eval(String name, Runnable thread) {
 				try {
-					server.eval(userUUID, mainJobUUID, name, thread);
+					server.eval(auth, name, thread);
 					System.out.println(name + " started");
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -132,7 +136,7 @@ public class TupleSpace {
 			public void eval(String className, Object[] construct, String methodName,
 					Object[] arguments) {
 				try {
-					server.eval(userUUID, mainJobUUID, className, construct, methodName, arguments);
+					server.eval(auth, className, construct, methodName, arguments);
 				} catch (Exception e) {
 					e.printStackTrace();
 					throw new RuntimeException("Failed to start new process...");

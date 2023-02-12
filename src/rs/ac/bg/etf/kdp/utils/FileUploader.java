@@ -73,7 +73,6 @@ public class FileUploader extends Thread {
 			return;
 		} catch (DeadlineExceededException e) {
 			e.printStackTrace();
-			System.exit(0);
 			listener.onDeadlineExceeded();
 			return;
 		}

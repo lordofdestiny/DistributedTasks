@@ -7,6 +7,7 @@ public class WorkerMonitor extends Thread {
 	private WorkerRecord record;
 	private WorkerStateListener listener;
 	private Runnable stabilityResponse = null;
+	private boolean killed = false;
 
 	WorkerMonitor(WorkerRecord record, WorkerStateListener listener, int interval) {
 		this.listener = listener;
@@ -22,6 +23,7 @@ public class WorkerMonitor extends Thread {
 	public void run() {
 		while (true) {
 			if (Thread.interrupted()) {
+				killed = true;
 				return;
 			}
 			final var wasOnline = record.isOnline();
@@ -39,15 +41,23 @@ public class WorkerMonitor extends Thread {
 				listener.workerUnavailable(record);
 			} else if (record.deadlineExpired()) {
 				listener.workerFailed(record);
+				killed = true;
+				return;
 			}
 			try {
 				Thread.sleep(interval);
 			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
 			}
 		}
 	}
 
-	public void quit() {
+	public synchronized void quit() {
 		interrupt();
+		killed = true;
+	}
+
+	public synchronized boolean isKilled() {
+		return killed;
 	}
 }
