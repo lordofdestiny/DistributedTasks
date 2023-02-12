@@ -6,9 +6,7 @@ import java.util.UUID;
 
 public interface IUUIDPingable extends Remote {
 	public class UnknownUUIDException extends RuntimeException {
-		/**
-		 * 
-		 */
+
 		private static final long serialVersionUID = 1L;
 
 		public UnknownUUIDException() {
@@ -16,5 +14,13 @@ public interface IUUIDPingable extends Remote {
 		}
 	}
 
-	void ping(UUID uuid) throws RemoteException, UnknownUUIDException;
+	static class ForcefullyUnbindException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
+		public ForcefullyUnbindException() {
+			super("This worker was previously considered failed and is ordered to reconnect!");
+		}
+	}
+
+	void ping(UUID uuid) throws RemoteException;
 }

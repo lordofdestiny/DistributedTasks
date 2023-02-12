@@ -32,7 +32,6 @@ class WorkerRecord {
 	private AtomicReference<WorkerMonitor> monitor = new AtomicReference<>();
 	private Instant deadline = null;
 
-	
 	private List<UUID> assignedJobs = new CopyOnWriteArrayList<>();
 
 	WorkerRecord(WorkerRegistration registration) {
@@ -40,7 +39,7 @@ class WorkerRecord {
 		this.uuid = registration.getUUID();
 		this.handle = registration.getHandle();
 //		this.maxConcurrency = registration.getConcurrency();
-		this.maxConcurrency = 10;
+		this.maxConcurrency = 3;
 		this.availableConcurrency = new AtomicInteger(maxConcurrency);
 	}
 
@@ -62,7 +61,7 @@ class WorkerRecord {
 		try {
 			return state;
 		} finally {
-			stateLock.lock();
+			stateLock.unlock();
 		}
 	}
 
@@ -89,8 +88,8 @@ class WorkerRecord {
 
 	public int increaseActiveJobs() {
 		return availableConcurrency.updateAndGet(value -> {
-			if (value < maxConcurrency) {
-				return value + 1;
+			if (value > 0) {
+				return value - 1;
 			} else {
 				return value;
 			}
@@ -99,8 +98,8 @@ class WorkerRecord {
 
 	public int decreaseActiveJobs() {
 		return availableConcurrency.updateAndGet(value -> {
-			if (value > 0) {
-				return value - 1;
+			if (value < maxConcurrency) {
+				return value + 1;
 			} else {
 				return value;
 			}

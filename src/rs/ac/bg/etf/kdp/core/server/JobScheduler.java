@@ -1,6 +1,8 @@
 package rs.ac.bg.etf.kdp.core.server;
 
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.BiConsumer;
@@ -39,6 +41,10 @@ public class JobScheduler extends Thread {
 		interrupt();
 	}
 
+	public void removeJobSet(Set<UUID> uuids) {
+		uuids.stream().forEach(uuid -> jobs.removeIf(job -> job.getJobUUID().equals(uuid)));
+	}
+
 	@Override
 	public void run() {
 		if (handler == null) {
@@ -54,6 +60,7 @@ public class JobScheduler extends Thread {
 			} catch (InterruptedException e) {
 				break;
 			}
+			System.out.println("JOB READY");
 			do {
 				try {
 					worker = workers.take();
@@ -61,6 +68,7 @@ public class JobScheduler extends Thread {
 					break mainLoop;
 				}
 			} while (!worker.isOnline());
+			System.out.println("WORKER READY");
 			System.out.println(
 					String.format("Scheduled job %s on %s...", job.jobUUID, worker.getUUID()));
 			job.setStatus(JobStatus.SCHEDULED);

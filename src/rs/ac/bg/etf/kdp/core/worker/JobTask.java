@@ -49,6 +49,15 @@ public abstract class JobTask {
 
 	protected abstract List<String> buildCommand();
 
+	private boolean destroyed = false;
+
+	final public void killProcess()  {
+		if (process != null && !destroyed) {
+			process.destroyForcibly();
+			destroyed = true;
+		}
+	}
+
 	final public Process getProcess() throws IOException {
 		if (process == null) {
 			process = pb.start();

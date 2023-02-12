@@ -10,7 +10,7 @@ import rs.ac.bg.etf.kdp.utils.IFileDownloader.RemoteIOException;
 public interface IServerClient extends IPingable, IUUIDPingable, Remote {
 	void register(UUID id, IClientServer client) throws RemoteException;
 
-	void ping(UUID id) throws RemoteException;
+	void ping(UUID id) throws RemoteException, ForcefullyUnbindException;
 
 	void ping() throws RemoteException;
 
@@ -47,11 +47,11 @@ public interface IServerClient extends IPingable, IUUIDPingable, Remote {
 	FileUploadHandle registerJob(UUID userUUID) throws RemoteException, UnregisteredClientException,
 			MultipleJobsException, RemoteIOException;
 
-	static enum ResultRequestCode{
-		UNKNOWN,
-		READY,
-		FAILED
+	static enum ResultRequestCode {
+		UNKNOWN, READY, FAILED;
 	}
-	
+
 	ResultRequestCode requestResults(UUID userUUID) throws RemoteException;
+
+	void respondToJobFailed(UUID clientUUID, int response) throws RemoteException;
 }

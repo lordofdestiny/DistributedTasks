@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -127,7 +128,6 @@ public class ClientAppFrame extends JFrame {
 	private final Supplier<UUID> newUUID;
 	private final Supplier<UUID> clientUUID;
 	private final ReentrantLock singleDialogLock;
-	private final AtomicReference<CompletableFuture<Integer>> taskFailedResponse = new AtomicReference<>();
 
 	/**
 	 * Create the application.
@@ -153,6 +153,11 @@ public class ClientAppFrame extends JFrame {
 	private Runnable fetchResults = () -> {
 
 	};
+	private Consumer<Integer> failedJobAction = (i) -> {
+	};
+
+	private int failedJobIndex = 0;
+	private Function<Integer, JobTreeNode> getFailedTreeIndex = (i) -> null;
 	private boolean connected = false;
 
 	public void setUUIDReadyListener(Consumer<UUID> listener) {
@@ -173,6 +178,14 @@ public class ClientAppFrame extends JFrame {
 
 	public void setFetchResultsListener(Runnable listener) {
 		fetchResults = Objects.requireNonNull(listener);
+	}
+
+	public void setIndexCallback(Function<Integer, JobTreeNode> cb) {
+		getFailedTreeIndex = Objects.requireNonNull(cb);
+	}
+
+	public void setFailedJobActionListener(Consumer<Integer> listener) {
+		failedJobAction = Objects.requireNonNull(listener);
 	}
 
 	private JPanel panelPing;
@@ -669,9 +682,9 @@ public class ClientAppFrame extends JFrame {
 		JPanel panelActivity = new JPanel();
 		tabbedPane.addTab("Job activity", null, panelActivity, null);
 		GridBagLayout gbl_panelActivity = new GridBagLayout();
-		gbl_panelActivity.columnWidths = new int[] { 30, 74, 102, 1, 0, 30, 0 };
+		gbl_panelActivity.columnWidths = new int[] { 30, 74, 102, 88, 102, 31, 31, 30, 0 };
 		gbl_panelActivity.rowHeights = new int[] { 0, 0, 140, 0, 25, 0, 33, 0, 0 };
-		gbl_panelActivity.columnWeights = new double[] { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0,
+		gbl_panelActivity.columnWeights = new double[] { 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
 				Double.MIN_VALUE };
 		gbl_panelActivity.rowWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
 				Double.MIN_VALUE };
@@ -680,7 +693,7 @@ public class ClientAppFrame extends JFrame {
 		Component verticalStrut_1 = Box.createVerticalStrut(20);
 		GridBagConstraints gbc_verticalStrut_1 = new GridBagConstraints();
 		gbc_verticalStrut_1.fill = GridBagConstraints.HORIZONTAL;
-		gbc_verticalStrut_1.gridwidth = 4;
+		gbc_verticalStrut_1.gridwidth = 6;
 		gbc_verticalStrut_1.insets = new Insets(0, 0, 5, 5);
 		gbc_verticalStrut_1.gridx = 1;
 		gbc_verticalStrut_1.gridy = 0;
@@ -696,6 +709,7 @@ public class ClientAppFrame extends JFrame {
 
 		Component horizontalGlue_1 = Box.createHorizontalGlue();
 		GridBagConstraints gbc_horizontalGlue_1 = new GridBagConstraints();
+		gbc_horizontalGlue_1.gridwidth = 2;
 		gbc_horizontalGlue_1.fill = GridBagConstraints.HORIZONTAL;
 		gbc_horizontalGlue_1.insets = new Insets(0, 0, 5, 5);
 		gbc_horizontalGlue_1.gridx = 2;
@@ -706,7 +720,7 @@ public class ClientAppFrame extends JFrame {
 		GridBagConstraints gbc_lblFailureCountL = new GridBagConstraints();
 		gbc_lblFailureCountL.anchor = GridBagConstraints.EAST;
 		gbc_lblFailureCountL.insets = new Insets(0, 0, 5, 5);
-		gbc_lblFailureCountL.gridx = 3;
+		gbc_lblFailureCountL.gridx = 5;
 		gbc_lblFailureCountL.gridy = 1;
 		panelActivity.add(lblFailureCountL, gbc_lblFailureCountL);
 
@@ -714,7 +728,7 @@ public class ClientAppFrame extends JFrame {
 		GridBagConstraints gbc_lblFailureCountValue = new GridBagConstraints();
 		gbc_lblFailureCountValue.anchor = GridBagConstraints.EAST;
 		gbc_lblFailureCountValue.insets = new Insets(0, 0, 5, 5);
-		gbc_lblFailureCountValue.gridx = 4;
+		gbc_lblFailureCountValue.gridx = 6;
 		gbc_lblFailureCountValue.gridy = 1;
 		panelActivity.add(lblFailureCountValue, gbc_lblFailureCountValue);
 
@@ -729,7 +743,7 @@ public class ClientAppFrame extends JFrame {
 
 		JScrollPane scrollPane = new JScrollPane();
 		GridBagConstraints gbc_scrollPane = new GridBagConstraints();
-		gbc_scrollPane.gridwidth = 4;
+		gbc_scrollPane.gridwidth = 6;
 		gbc_scrollPane.insets = new Insets(0, 0, 5, 5);
 		gbc_scrollPane.fill = GridBagConstraints.BOTH;
 		gbc_scrollPane.gridx = 1;
@@ -745,42 +759,67 @@ public class ClientAppFrame extends JFrame {
 		gbc_horizontalStrut_5.fill = GridBagConstraints.BOTH;
 		gbc_horizontalStrut_5.gridheight = 3;
 		gbc_horizontalStrut_5.insets = new Insets(0, 0, 5, 0);
-		gbc_horizontalStrut_5.gridx = 5;
+		gbc_horizontalStrut_5.gridx = 7;
 		gbc_horizontalStrut_5.gridy = 2;
 		panelActivity.add(horizontalStrut_5, gbc_horizontalStrut_5);
 
-		JButton btnAbandonJob = new JButton("Abandon job");
-		btnAbandonJob.addActionListener((e) -> {
-			if (taskFailedResponse.get() == null) {
-				return;
-			}
-
-//			process.abandonJob();
-//			Empty the queue!
-		});
-		GridBagConstraints gbc_btnAbandonJob = new GridBagConstraints();
-		gbc_btnAbandonJob.insets = new Insets(0, 0, 5, 5);
-		gbc_btnAbandonJob.gridx = 3;
-		gbc_btnAbandonJob.gridy = 3;
-		panelActivity.add(btnAbandonJob, gbc_btnAbandonJob);
-
 		JButton btnRestart = new JButton("Restart");
 		btnRestart.addActionListener(e -> {
-			if (taskFailedResponse.get() == null) {
-				return;
-			}
-//			process.restartTask()
+			failedJobAction.accept(2);
+			jobTree.setModel(new DefaultTreeModel(null));
+			lblFailureCountValue.setText("0");
 		});
+
+		JButton btnAbandonJob = new JButton("Abort job");
+		btnAbandonJob.addActionListener((e) -> {
+			failedJobAction.accept(1);
+			jobTree.setModel(new DefaultTreeModel(null));
+			lblFailureCountValue.setText("0");
+		});
+
+		JButton btnGoTreeLeft = new JButton("<");
+		btnGoTreeLeft.addActionListener(e -> {
+			final var res = getFailedTreeIndex.apply(failedJobIndex - 1);
+			if (res != null) {
+				failedJobIndex--;
+				acceptTree(res, failedJobIndex - 1);
+			}
+		});
+		GridBagConstraints gbc_btnGoTreeLeft = new GridBagConstraints();
+		gbc_btnGoTreeLeft.anchor = GridBagConstraints.EAST;
+		gbc_btnGoTreeLeft.insets = new Insets(0, 0, 5, 5);
+		gbc_btnGoTreeLeft.gridx = 3;
+		gbc_btnGoTreeLeft.gridy = 3;
+		panelActivity.add(btnGoTreeLeft, gbc_btnGoTreeLeft);
+		GridBagConstraints gbc_btnAbandonJob = new GridBagConstraints();
+		gbc_btnAbandonJob.insets = new Insets(0, 0, 5, 5);
+		gbc_btnAbandonJob.gridx = 4;
+		gbc_btnAbandonJob.gridy = 3;
+		panelActivity.add(btnAbandonJob, gbc_btnAbandonJob);
 		GridBagConstraints gbc_btnRestart = new GridBagConstraints();
 		gbc_btnRestart.insets = new Insets(0, 0, 5, 5);
-		gbc_btnRestart.gridx = 4;
+		gbc_btnRestart.gridx = 5;
 		gbc_btnRestart.gridy = 3;
 		panelActivity.add(btnRestart, gbc_btnRestart);
+
+		JButton btnGoTreeRight = new JButton(">");
+		btnGoTreeRight.addActionListener(e -> {
+			final var res = getFailedTreeIndex.apply(failedJobIndex + 1);
+			if (res != null) {
+				acceptTree(res, failedJobIndex + 1);
+			}
+		});
+		GridBagConstraints gbc_btnGoTreeRight = new GridBagConstraints();
+		gbc_btnGoTreeRight.fill = GridBagConstraints.HORIZONTAL;
+		gbc_btnGoTreeRight.insets = new Insets(0, 0, 5, 5);
+		gbc_btnGoTreeRight.gridx = 6;
+		gbc_btnGoTreeRight.gridy = 3;
+		panelActivity.add(btnGoTreeRight, gbc_btnGoTreeRight);
 
 		JSeparator separator_2 = new JSeparator();
 		GridBagConstraints gbc_separator_2 = new GridBagConstraints();
 		gbc_separator_2.fill = GridBagConstraints.HORIZONTAL;
-		gbc_separator_2.gridwidth = 4;
+		gbc_separator_2.gridwidth = 6;
 		gbc_separator_2.insets = new Insets(0, 0, 5, 5);
 		gbc_separator_2.gridx = 1;
 		gbc_separator_2.gridy = 4;
@@ -788,6 +827,7 @@ public class ClientAppFrame extends JFrame {
 
 		JLabel lblLog = new JLabel("Event log");
 		GridBagConstraints gbc_lblLog = new GridBagConstraints();
+		gbc_lblLog.anchor = GridBagConstraints.WEST;
 		gbc_lblLog.insets = new Insets(0, 0, 5, 5);
 		gbc_lblLog.gridx = 1;
 		gbc_lblLog.gridy = 5;
@@ -795,7 +835,7 @@ public class ClientAppFrame extends JFrame {
 
 		JScrollPane scrollPane_1 = new JScrollPane();
 		GridBagConstraints gbc_scrollPane_1 = new GridBagConstraints();
-		gbc_scrollPane_1.gridwidth = 4;
+		gbc_scrollPane_1.gridwidth = 6;
 		gbc_scrollPane_1.insets = new Insets(0, 0, 5, 5);
 		gbc_scrollPane_1.fill = GridBagConstraints.BOTH;
 		gbc_scrollPane_1.gridx = 1;
@@ -828,7 +868,7 @@ public class ClientAppFrame extends JFrame {
 		Component verticalStrut_2 = Box.createVerticalStrut(20);
 		GridBagConstraints gbc_verticalStrut_2 = new GridBagConstraints();
 		gbc_verticalStrut_2.fill = GridBagConstraints.VERTICAL;
-		gbc_verticalStrut_2.gridwidth = 4;
+		gbc_verticalStrut_2.gridwidth = 6;
 		gbc_verticalStrut_2.insets = new Insets(0, 0, 0, 5);
 		gbc_verticalStrut_2.gridx = 1;
 		gbc_verticalStrut_2.gridy = 7;
@@ -1197,12 +1237,18 @@ public class ClientAppFrame extends JFrame {
 	private Lock treeLock = new ReentrantLock();
 	private JLabel lblFailureCountValue;
 
-	public void acceptTree(JobTreeNode node, CompletableFuture<Integer> future) {
-		// TODO REMEMBER TO DECREMENT ELSEWHERE
-		synchronized (lblFailureCountValue) {
-			final var current = Integer.valueOf(lblFailureCountValue.getText().strip());
-			lblFailureCountValue.setText(String.valueOf(current + 1));
-		}
+	public void incrementFailureCount() {
+		final var current = Integer.valueOf(lblFailureCountValue.getText().strip());
+		lblFailureCountValue.setText(String.valueOf(current + 1));
+	}
+
+	public void decrementFailureCount() {
+		final var current = Integer.valueOf(lblFailureCountValue.getText().strip());
+		lblFailureCountValue.setText(String.valueOf(current - 1));
+	}
+
+	public void acceptTree(JobTreeNode node, int newIndex) {
+		failedJobIndex = newIndex;
 		class Pair {
 			JobTreeNode dataNode;
 			DefaultMutableTreeNode displayNode;
@@ -1212,8 +1258,6 @@ public class ClientAppFrame extends JFrame {
 				this.displayNode = display;
 			}
 		}
-
-		taskFailedResponse.set(future);
 
 		treeLock.lock();
 		try {

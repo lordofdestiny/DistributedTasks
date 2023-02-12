@@ -10,9 +10,6 @@ import rs.ac.bg.etf.kdp.utils.FileUploadHandle;
 
 public interface IServerWorker extends IPingable, IUUIDPingable, Remote {
 	public static class AlreadyRegisteredException extends Exception {
-		/**
-		 * 
-		 */
 		private static final long serialVersionUID = 1L;
 
 		public AlreadyRegisteredException() {

@@ -2,6 +2,7 @@ package rs.ac.bg.etf.kdp.utils;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.rmi.NoSuchObjectException;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
@@ -31,6 +32,11 @@ public class FileDownloader extends UnicastRemoteObject implements IFileDownload
 			throws RemoteException {
 		this.token = token;
 		this.listener = listener;
+		try {
+			Files.createDirectories(token.getFileLocation().toPath().getParent());
+		} catch (IOException e) {
+
+		}
 		final var delay = Duration.between(Instant.now(), token.deadline());
 		deadlineSignalingPool.schedule(() -> {
 			final boolean locked = lock.tryLock();

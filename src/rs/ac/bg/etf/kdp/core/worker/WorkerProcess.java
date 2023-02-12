@@ -23,6 +23,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Predicate;
 
 import javax.swing.filechooser.FileSystemView;
 
@@ -53,7 +56,17 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 	}
 
 	public static final Path CHANGE_LATER_ROOT_DIR = FileSystemView.getFileSystemView()
-			.getHomeDirectory().toPath().resolve("Jobs");
+			.getHomeDirectory().toPath().resolve("Jobs" + System.currentTimeMillis());
+
+	{
+		try {
+			System.out.println(CHANGE_LATER_ROOT_DIR);
+			Files.createDirectories(CHANGE_LATER_ROOT_DIR);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
 
 	private final ExecutorService jobCreationExecutor = Executors.newCachedThreadPool();
 	private final CompletionService<Void> jobCreationCompletionService = new ExecutorCompletionService<>(
@@ -65,6 +78,8 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 
 	private final Thread creationAwaiterThread = new Thread(this::jobCreationAwaiterLoop);
 	private final Thread executionAwaiterThread = new Thread(this::jobExecutionAwaiterLoop);
+
+	private final Lock transactionLock = new ReentrantLock();
 
 	private final Map<UUID, WorkerJobRecord> registeredJobs = new ConcurrentHashMap<>();
 
@@ -131,7 +146,7 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 		}
 	};
 
-	private boolean connectToServer() {
+	public boolean connectToServer() {
 		try {
 			server = ConnectionProvider.connect(connInfo, IServerWorker.class);
 			UnicastRemoteObject.exportObject(this, 0);
@@ -300,6 +315,9 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 			try {
 				final var future = jobCreationCompletionService.take();
 				final var record = futureOwners.remove(future);
+				if (record == null) {
+					continue;
+				}
 				try {
 					future.get();
 					final var jobFuture = jobExecutionCompletionService.submit(() -> {
@@ -328,6 +346,9 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 			try {
 				final var future = jobExecutionCompletionService.take();
 				final var record = futureOwners.remove(future);
+				if (record == null) {
+					continue;
+				}
 				try {
 					future.get();
 					if (record.getTask().getProcess().exitValue() != 0) {
@@ -381,7 +402,10 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 					System.err.println(String.format("Failed to create results.zip for %s...",
 							job.getJobUUID()));
 					job.countUpUploadFailures();
-					jobsForUploading.add(job);
+					if (!jobsForUploading.contains(job)) {
+						jobsForUploading.add(job);
+					}
+					continue;
 				}
 			}
 
@@ -391,8 +415,15 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 			} catch (RemoteException e) {
 				System.err.println(
 						String.format("Failed to fetch upload handle for %s", job.getJobUUID()));
-				job.countUpUploadFailures();
-				jobsForUploading.add(job);
+				if (!jobsForUploading.contains(job)) {
+					jobsForUploading.add(job);
+				}
+			}
+
+			if (!handle.isValid()) {
+				while (jobsForUploading.remove(job)) {
+					// Remove all instances of this job pending to upload
+				}
 			}
 
 			final WorkerJobRecord Job = job;
@@ -402,29 +433,35 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 							System.err.println(String.format(
 									"Failed to connect to server while sending %s to server...",
 									Job.getJobUUID()));
-							Job.countUpUploadFailures();
-							jobsForUploading.add(Job);
+							if (!jobsForUploading.contains(Job)) {
+								jobsForUploading.add(Job);
+							}
 						}
 
 						public void onDeadlineExceeded() {
 							System.err.println(
 									String.format("Deadlin exceeded while sending %s to server...",
 											Job.getJobUUID()));
-							Job.countUpUploadFailures();
-							jobsForUploading.add(Job);
+							if (!jobsForUploading.contains(Job)) {
+								jobsForUploading.add(Job);
+							}
 						}
 
 						public void onIOException() {
 							System.err.println(String.format(
 									"File error while sending %s to server...", Job.getJobUUID()));
-							Job.countUpUploadFailures();
-							jobsForUploading.add(Job);
+							if (!jobsForUploading.contains(Job)) {
+								jobsForUploading.add(Job);
+							}
 						}
 
 						public void onUploadComplete(long bytes) {
 							System.out.println(String.format("Results for %s sent to server...",
 									Job.getJobUUID()));
 							try {
+								while (jobsForUploading.remove(Job)) {
+									// Remove all instances of this job pending to upload
+								}
 								Files.delete(destination);
 							} catch (IOException e) {
 								System.err
@@ -445,6 +482,28 @@ public class WorkerProcess implements IWorkerServer, Unreferenced {
 		if (!pw.connectToServer()) {
 			System.err.println("Failed to connect to server!");
 			System.exit(0);
+		}
+	}
+
+	@Override
+	public int killJobsAssociatedWithClient(UUID clientUUID) throws RemoteException {
+		System.out.println("Destroying jobs for user " + clientUUID);
+		transactionLock.lock();
+		try {
+			final Predicate<WorkerJobRecord> test = job -> job.getUserUUID().equals(clientUUID);
+			int count = (int) registeredJobs.values().stream().filter(test).count();
+			jobsForUploading.removeIf(test);
+			for (final var future : futureOwners.keySet()) {
+				future.cancel(true);
+			}
+			futureOwners.values().removeIf(test);
+			registeredJobs.values().stream().filter(test).forEach(job -> {
+				job.getTask().killProcess();
+			});
+			registeredJobs.values().removeIf(test);
+			return count;
+		} finally {
+			transactionLock.unlock();
 		}
 	}
 }

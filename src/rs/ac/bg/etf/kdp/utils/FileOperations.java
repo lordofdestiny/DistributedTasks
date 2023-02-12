@@ -68,6 +68,9 @@ public class FileOperations {
 		final var buffer = new byte[BUFFER_SIZE];
 		try (final var fs = FileSystems.newFileSystem(uri, env)) {
 			final var zipPath = fs.getPath(zipDestPath);
+			if (Files.exists(zipPath)){
+				return;
+			}
 			if (zipPath.getParent() != null) {
 				Files.createDirectories(zipPath.getParent());
 			}
@@ -176,7 +179,7 @@ public class FileOperations {
 		}
 	}
 
-	public static File newFile(File destinationDir, ZipEntry zipEntry) throws IOException {
+	private static File newFile(File destinationDir, ZipEntry zipEntry) throws IOException {
 		File destFile = new File(destinationDir, zipEntry.getName());
 
 		String destDirPath = destinationDir.getCanonicalPath();

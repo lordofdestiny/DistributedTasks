@@ -6,11 +6,8 @@ import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
 import javax.swing.JOptionPane;
@@ -27,7 +24,6 @@ import rs.ac.bg.etf.kdp.utils.Configuration;
 import rs.ac.bg.etf.kdp.utils.FileOperations;
 import rs.ac.bg.etf.kdp.utils.IFileDownloader.RemoteIOException;
 import rs.ac.bg.etf.kdp.utils.JobDescriptor;
-import rs.ac.bg.etf.kdp.utils.JobStatus;
 
 public class ClientApp {
 	static {
@@ -37,39 +33,13 @@ public class ClientApp {
 	private Path JOB_RESULTS_DIRECTORY = FileSystemView.getFileSystemView().getHomeDirectory()
 			.toPath().resolve("Results");
 
-	private BlockingQueue<JobTreeNode> failedJobs = new LinkedBlockingQueue<>();
+	private ArrayList<JobTreeNode> failedJobs = new ArrayList<>();
+
 	private final ReentrantLock singleDialogLock = new ReentrantLock();
 	private ClientAppFrame frame = new ClientAppFrame(singleDialogLock, UUID::randomUUID,
 			() -> this.clientUUID);
 	private UUID clientUUID = null;
 	private ClientProcess process = null;
-
-	private Thread failedJobServer = new Thread() {
-		@Override
-		public void run() {
-			while (true) {
-				JobTreeNode fjd = null;
-				try {
-					fjd = failedJobs.take();
-				} catch (InterruptedException ignore) {
-				}
-				final var future = new CompletableFuture<Integer>();
-				frame.acceptTree(fjd, future);
-				try {
-					future.get();
-					/*
-					 * TODO: DEPENDING ON WHAT THE USER ANSWERS THE RESPONSE SHOULD BE SENT TO THE
-					 * SERVER VIA "process" SO THAT THE SERVER CAN SCHEDULE APPROPRIATELY
-					 */
-				} catch (InterruptedException | ExecutionException ignore) {
-				}
-			}
-		}
-	};
-
-	{
-		failedJobServer.start();
-	}
 
 	public ClientApp() {
 		frame.setUUIDReadyListener((uuid) -> {
@@ -82,8 +52,17 @@ public class ClientApp {
 				System.err.println(String.format("Job failed to start:\n %s", cause));
 			});
 
-			process.setJobFailedListener((JobTreeNode) -> {
-				failedJobs.offer(JobTreeNode);
+			frame.setIndexCallback((i) -> {
+				if (i < 0 || i >= failedJobs.size()) {
+					return null;
+				}
+				return failedJobs.get(i);
+			});
+
+			process.setJobFailedListener((jobTreeNode) -> {
+				frame.incrementFailureCount();
+				failedJobs.add(jobTreeNode);
+				frame.acceptTree(jobTreeNode, failedJobs.size() - 1);
 			});
 
 			process.setJobResultsTransferListener(new JobResultsTransferListener() {
@@ -124,6 +103,11 @@ public class ClientApp {
 				frame.showNotification("Job state unknown",
 						"Server has no information on job data for this client");
 			}
+		});
+
+		frame.setFailedJobActionListener((p) -> {
+			process.respondToJobFailure(p);
+			failedJobs.clear();
 		});
 
 		frame.addWindowListener(new WindowAdapter() {

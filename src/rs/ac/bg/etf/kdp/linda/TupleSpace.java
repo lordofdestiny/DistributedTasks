@@ -109,7 +109,7 @@ public class TupleSpace {
 			@Override
 			public boolean rdp(String[] tuple) {
 				try {
-					final var result = server.in(tuple);
+					final var result = server.rdp(tuple);
 					if (result != null) {
 						fill(tuple, result);
 						return true;

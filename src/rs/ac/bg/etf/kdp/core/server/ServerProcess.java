@@ -9,18 +9,20 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import javax.swing.filechooser.FileSystemView;
@@ -61,6 +63,7 @@ public class ServerProcess extends UnicastRemoteObject
 	}
 
 	private ReentrantLock transactionLock = new ReentrantLock();
+
 	private final Map<UUID, WorkerRecord> registeredWorkers = new ConcurrentHashMap<>();
 	private final Map<UUID, ClientRecord> registeredClients = new ConcurrentHashMap<>();
 	private ReentrantLock allJobsLock = new ReentrantLock();
@@ -165,9 +168,12 @@ public class ServerProcess extends UnicastRemoteObject
 	}
 
 	@Override
-	public void ping(UUID id) throws RemoteException {
+	public void ping(UUID id) throws RemoteException, ForcefullyUnbindException {
 		final var record = registeredWorkers.get(id);
 		if (record != null) {
+			if (record.getState() == WorkerState.OFFLINE) {
+				throw new ForcefullyUnbindException();
+			}
 			record.setState(WorkerState.ONLINE);
 		} else if (!registeredClients.containsKey(id)) {
 			// Not a worker and not a client
@@ -416,7 +422,7 @@ public class ServerProcess extends UnicastRemoteObject
 
 			}
 		} finally {
-			transactionLock.lock();
+			transactionLock.unlock();
 		}
 
 		return root;
@@ -425,6 +431,7 @@ public class ServerProcess extends UnicastRemoteObject
 	@Override
 	public FileUploadHandle jobComplete(UUID workerUUID, UUID jobUUID) throws RemoteException {
 		final var jobRecord = allJobs.get(jobUUID);
+
 		jobRecord.setStatus(JobStatus.RECEIVING_RESULTS);
 		final var workerRecord = registeredWorkers.get(workerUUID);
 
@@ -436,30 +443,36 @@ public class ServerProcess extends UnicastRemoteObject
 			public void onTransferComplete() {
 				System.out.println(String.format("Job result for %s received.", jobUUID));
 				transactionLock.lock();
-
-				jobRecord.setStatus(JobStatus.DONE);
-				workerRecord.removeAssignedJob(jobUUID);
-				// Check if the whole job is complete
-				final var mainJobUUID = jobRecord.getMainJobUUID();
-				final var mainJob = allJobs.get(mainJobUUID);
-				boolean jobComplete = mainJob.isFullyComplete();
-
+				boolean jobComplete = false;
+				ServerJobRecord mainJob = null;
 				try {
-					final var descPath = resultPath.resolveSibling("desc.txt");
-					Files.write(descPath, jobRecord.description().getBytes());
-					FileOperations.addFileToZip(resultPath, "/__LINDA__DESC__.txt",
-							descPath.toFile());
-				} catch (IOException ignore) {
+					jobRecord.setStatus(JobStatus.DONE);
+					workerRecord.removeAssignedJob(jobUUID);
+					scheduler.putWorker(workerRecord);
+					// Check if the whole job is complete
+					final var mainJobUUID = jobRecord.getMainJobUUID();
+					mainJob = allJobs.get(mainJobUUID);
+					jobComplete = mainJob.isFullyComplete();
+
+					try {
+						final var descPath = resultPath.resolveSibling("desc.txt");
+						Files.write(descPath, jobRecord.description().getBytes());
+						FileOperations.addFileToZip(resultPath, "/__LINDA__DESC__.txt",
+								descPath.toFile());
+					} catch (IOException ignore) {
+						ignore.printStackTrace();
+					}
+				} finally {
+					transactionLock.unlock();
 				}
 
-				transactionLock.unlock();
 				if (jobComplete) {
+					final var finalMainJob = mainJob;
 					mainExecutorThreadPool.submit(() -> {
 						try {
-							// TODO TRY A FEW TIMES IF IOException HAPPENED
-							uploadResultsToClient(mainJob);
+							uploadResultsToClient(finalMainJob);
 						} catch (Exception e) {
-							clientsWithCompletedJobs.put(jobRecord.getClientUUID(), mainJob);
+							clientsWithCompletedJobs.put(jobRecord.getClientUUID(), finalMainJob);
 						}
 					});
 				}
@@ -469,6 +482,7 @@ public class ServerProcess extends UnicastRemoteObject
 			public void onDeadlineExceeded() {
 				System.err.println(String.format("Failed to receive result job for %s.", jobUUID));
 				jobRecord.setStatus(JobStatus.RESULT_RETREIVAL_FAILED);
+				scheduler.putWorker(workerRecord);
 			}
 		});
 
@@ -490,7 +504,11 @@ public class ServerProcess extends UnicastRemoteObject
 
 			// result files were generated so it's safe to call
 			uploadJobToClient(client.handle.get(), mainJob);
+
+			clientsWithCompletedJobs.remove(client.uuid);
+			client.mainJobUUID = null;
 		} finally {
+			mainJob.setResultFilesGenerated();
 			mainJob.getResultFilesLock().unlock();
 			transactionLock.unlock();
 		}
@@ -547,35 +565,37 @@ public class ServerProcess extends UnicastRemoteObject
 				new UploadingListener() {
 					public void onFailedConnection() {
 						clientsWithCompletedJobs.put(mainJob.getClientUUID(), mainJob);
-						System.err.println("FAILED TO CONNECT");
+						System.err.println(
+								String.format("Failed to connect to %s in order to upload result",
+										mainJob.getClientUUID()));
 					}
 
 					public void onDeadlineExceeded() {
 						clientsWithCompletedJobs.put(mainJob.getClientUUID(), mainJob);
-						System.err.println("DEADLINE EXCEEDED");
+						System.err.println(String.format(
+								"Deadline exceeded while trying to send results to %s",
+								mainJob.getClientUUID()));
 					}
 
 					public void onIOException() {
 						clientsWithCompletedJobs.put(mainJob.getClientUUID(), mainJob);
-						System.err.println("IOEXCEPTION");
+						System.err.println(String.format("IOException while sending results to",
+								mainJob.getClientUUID()));
 					}
 
 					public void onUploadComplete(long bytes) {
 						System.out.println("UPLOAD COMPLETE");
-						// TODO CLEAN STUFF UP, DELETE ALL SHIT
+						// TODO CLEAN STUFF UP, DELETE ALL DATA
 					}
 				});
 		uploader.start();
 	}
 
-	// TODO: JobStatus.FAILED NOT SET ANYWHERE YET
-	// TODO: REMOTE JOBS FROM WORKER'S JOB LISTS IN CASE THEY FAIL
-	// TODO: THINK OF WAYS TO HANDLE WORKERS THAT PING THE SERVER AFTER THEY DIED
 	// WHEN WORKER RECEIVES UnknownUUIDException IT CAN RECONNECT TO SERVER WITH NEW
 	// UUID
 	private void handleFailedWorker(WorkerRecord worker) {
 		// TODO: Users lists have to be updated ?
-		// NO! Keep them until user requests a restart
+		// NO! Keep them until user requests a restart or abandons
 
 		transactionLock.lock();
 
@@ -597,35 +617,32 @@ public class ServerProcess extends UnicastRemoteObject
 					// If user is registered - server thinks he is online
 					if (user != null) {
 						// All jobs that this user had on this worker
-						final var userJobs = worker.getAssignedJobs().parallelStream()
-								.map(allJobs::get).filter(u -> u.getClientUUID().equals(userUUID))
-								.collect(Collectors.toCollection(ArrayList::new));
 						// Create a future that will try and notify user about all failed jobs
 						// If this future fails user is offline
-						final var future = mainExecutorThreadPool.submit(() -> {
-							for (final var userJob : userJobs) {
-								user.handle.get().notifyJobFailed(constructJobTree(userJob));
-							}
-							return null;
-						});
-						try {
-							future.get();
-							return;
-						} catch (InterruptedException | ExecutionException e) {
-							System.err.println(
-									String.format("User %s is offline, canceling all tasks"));
-						}
-					}
-					/*
-					 * TODO: DO NOT REMOVE USER IN CASE HE LOGINS AGAIN TO ASK FOR THE STATE OF HIS
-					 * JOB. HE NEEDS TO BE NOTIFIED THAT THE JOB HAS BEEN KILLED
-					 */
 
-					/*
-					 * User is actually offline, notify all workers online workers to terminate
-					 * their jobs. EASYER TO NOTIFY ALL WORKERS TO GET RID OF HIS JOBS, AND LET THEM
-					 * HANDLE IT
-					 */
+						final var futures = worker.getAssignedJobs().parallelStream()
+								.map(allJobs::get).filter(u -> u.getClientUUID().equals(userUUID))
+								.map(userJob -> CompletableFuture.runAsync(() -> {
+									try {
+										user.handle.get()
+												.notifyJobFailed(constructJobTree(userJob));
+									} catch (Exception e) {
+										throw new CompletionException(e);
+									}
+								}, mainExecutorThreadPool)).toArray(CompletableFuture[]::new);
+
+						final var finalResult = CompletableFuture.allOf(futures)
+								.handle((ex, res) -> ex == null);
+						try {
+							if (finalResult.get()) {
+								return;
+							}
+						} catch (InterruptedException | ExecutionException e) {
+						}
+						System.err
+								.println(String.format("User %s is offline, canceling all tasks"));
+						clientsWithKilledJobs.put(userUUID, allJobs.get(user.mainJobUUID));
+					}
 					killClientAssociatedJobs(userUUID);
 				} finally {
 					latch.countDown();
@@ -642,22 +659,6 @@ public class ServerProcess extends UnicastRemoteObject
 		});
 	}
 
-	// TODO: RETURNING WORKERS AND JOBS TO THE SCHEDULER
-	/*
-	 * TODO: THERE IS GOING TO BE A NEED FOR AN EXCLUSIVE LOCK OVER SOME OF THE LIST
-	 * BECUASE OF CONCURRENT ACCESS
-	 */
-
-	private void killClientAssociatedJobs(UUID clientUUID) {
-		final var workers = registeredWorkers.values().parallelStream()
-				.filter((w) -> w.getState() == WorkerState.ONLINE)
-				.collect(Collectors.toCollection(ArrayList::new));
-
-		for (final var userWorker : workers) {
-			// TODO: Cancel any job that came from this user
-		}
-	}
-
 	@Override
 	public void reportJobFailedToStart(UUID workerUUID, UUID jobUUID) throws RemoteException {
 		System.err.println(String.format("Job %s failed to start!", jobUUID));
@@ -666,11 +667,10 @@ public class ServerProcess extends UnicastRemoteObject
 			if (job.failedToStartCountUp() < 5) {
 				// TRY AND START JOB ON THE NEW WORKER
 				scheduler.putJob(job);
+				scheduler.putWorker(registeredWorkers.get(workerUUID));
 			} else {
 				System.err.println(String.format("Job %s failed to start 5 times!", jobUUID));
 				job.setStatus(JobStatus.FAILED);
-				// TODO REMOVE JOB FOR APPROPRIATE STRUCTURES
-				// TODO NO!!! JOB STAYS UNTIL USER << DECIDES >>
 			}
 
 			transactionLock.lock();
@@ -690,6 +690,7 @@ public class ServerProcess extends UnicastRemoteObject
 					}
 				}
 				// Client actually is offline, so kill all associated jobs
+				clientsWithKilledJobs.put(client.uuid, allJobs.get(client.mainJobUUID));
 				killClientAssociatedJobs(job.getClientUUID());
 			} finally {
 				transactionLock.unlock();
@@ -700,39 +701,52 @@ public class ServerProcess extends UnicastRemoteObject
 
 	@Override
 	public void reportJobFailed(UUID workerUUID, UUID jobUUID) throws RemoteException {
-		/*
-		 * TODO: JOB NEEDS TO BE PLACED SOMEWHERE ELSE WHILE WAITING FOR RESPONSE FROM
-		 * CLIENT
-		 */
 		scheduler.putWorker(registeredWorkers.get(workerUUID)); // Worker can be used again
 		System.out.println(String.format("Job %s failed!", jobUUID));
 		mainExecutorThreadPool.submit(() -> {
 			transactionLock.lock();
 			final var job = allJobs.get(jobUUID);
+			job.setStatus(JobStatus.FAILED);
+
 			final var clientUUID = job.getClientUUID();
 			final var client = registeredClients.get(clientUUID);
+
+			/*
+			 * THERE IS A BIG PROBLEM IF ONE FAILED JOB IS A SUBPART OF THE LARGER JOB THAT
+			 * NEEDS TO BE HANDLED IN SOME WAY!!! BEST TO LEAVE IT TO THE CLIENT TO DECIDE,
+			 * SINCE JOB TREE IS AVAILABLE
+			 */
 			try {
-				final var jobTree = constructJobTree(job);
-				client.handle.get().notifyJobFailed(jobTree);
-				/*
-				 * TODO: LATER RECEIVE RESPONSE FROM THE CLIENT ON WHAT TO DO.
-				 */
-				/*
-				 * CLIENT CAN RESTART THE FAILED JOB OR ABORT IT.
-				 */
-				/*
-				 * THERE IS A BIG PROBLEM IF ONE FAILED JOB IS A SUBPART OF THE LARGER JOB THAT
-				 * NEEDS TO BE HANDLED IN SOME WAY!!! BEST TO LEAVE IT TO THE CLIENT TO DECIDE,
-				 * SINCE JOB TREE IS AVAILABLE
-				 */
+				client.handle.get().notifyJobFailed(constructJobTree(job));
 			} catch (RemoteException e) {
 				System.err.println(String.format("Failed to notify user %s that job %s failed.",
 						client.uuid, jobUUID));
+				clientsWithKilledJobs.put(clientUUID, allJobs.get(client.mainJobUUID));
 				killClientAssociatedJobs(clientUUID);
 			} finally {
 				transactionLock.unlock();
 			}
 		});
+	}
+
+	/*
+	 * User is actually offline, notify all online workers to terminate their jobs.
+	 * EASYER TO NOTIFY ALL WORKERS TO GET RID OF HIS JOBS, AND LET THEM HANDLE IT
+	 */
+	private void killClientAssociatedJobs(UUID clientUUID) {
+		final var workers = registeredWorkers.values().parallelStream()
+				.filter((w) -> w.getState() == WorkerState.ONLINE);
+		for (final var userWorker : (Iterable<WorkerRecord>) workers::iterator) {
+			try {
+				int count = userWorker.getHandle().killJobsAssociatedWithClient(clientUUID);
+				for (int i = 0; i < count; i++) {
+					scheduler.putWorker(userWorker);
+				}
+			} catch (RemoteException e) {
+				System.err.println(String.format("Faield to kill jobs for user %s on worer %s",
+						clientUUID, userWorker.getUUID()));
+			}
+		}
 	}
 
 	@Override
@@ -748,6 +762,8 @@ public class ServerProcess extends UnicastRemoteObject
 				final var jobRecord = clientsWithCompletedJobs.get(userUUID);
 				try {
 					uploadJobToClient(clientRecord.handle.get(), jobRecord);
+					clientsWithCompletedJobs.remove(userUUID);
+					clientRecord.mainJobUUID = null;
 				} catch (IOException e) {
 					System.err.println(
 							String.format("Failed to upload job to client %s", clientRecord.uuid));
@@ -757,5 +773,80 @@ public class ServerProcess extends UnicastRemoteObject
 		}
 
 		return ResultRequestCode.UNKNOWN;
+	}
+
+	private void abortJob(UUID clientUUID) {
+		transactionLock.lock();
+		final var clientRecord = registeredClients.get(clientUUID);
+		clientRecord.jobShards.clear();
+		final var mainJob = allJobs.get(clientRecord.mainJobUUID);
+		try {
+			try {
+				if (mainJob.jobDirectory.toFile().exists()) {
+					Files.walk(mainJob.jobDirectory).sorted(Comparator.reverseOrder())
+							.filter(path -> !path.toFile().getName().endsWith("job.zip"))
+							.map(Path::toFile).forEach(File::delete);
+				}
+			} catch (IOException ignore) {
+			}
+			// RENGERATE ALL SUB JOBS
+			// TODO LOG THAT ALL JOBS THAT WERE NOT DONE WERE ABOURED
+			final var jobUUIDSet = new HashSet<UUID>();
+			final var stack = new ArrayDeque<UUID>();
+			stack.push(clientRecord.mainJobUUID);
+
+			while (!stack.isEmpty()) {
+				final var current = stack.pop();
+				jobUUIDSet.add(current);
+				final var currJobRec = allJobs.get(current);
+
+				final var reversed = currJobRec.children.listIterator(currJobRec.children.size());
+				while (reversed.hasPrevious()) {
+					final var curr = reversed.previous();
+					stack.push(curr.jobUUID);
+				}
+			}	
+			mainJob.children.clear();
+			mainJob.failedToStartCount.set(0);
+
+			killClientAssociatedJobs(clientUUID);
+
+			// remove jobs from workers
+			for (final var worker : registeredWorkers.values()) {
+				worker.getAssignedJobs().removeIf(jobUUIDSet::contains);
+			}
+
+			// remove all clients jobs
+			jobUUIDSet.stream().forEach(allJobs::remove);
+
+			scheduler.removeJobSet(jobUUIDSet);
+
+			clientsWithCompletedJobs.remove(clientUUID);
+			clientsWithKilledJobs.remove(clientUUID);
+
+			clientRecord.mainJobUUID = null;
+		} finally {
+			transactionLock.unlock();
+		}
+	}
+
+	private void restartJob(UUID clientUUID) {
+		final var client = registeredClients.get(clientUUID);
+		final var mainJobUUID = client.mainJobUUID;
+		final var mainJob = allJobs.get(client.mainJobUUID);
+		abortJob(clientUUID);
+		client.mainJobUUID = mainJobUUID;
+		allJobs.put(mainJobUUID, mainJob);
+		scheduler.putJob(mainJob);
+		mainJob.setResultFilesGenerated(false);
+	}
+
+	@Override
+	public void respondToJobFailed(UUID clientUUID, int response) {
+		if (response == 1) {
+			abortJob(clientUUID);
+		} else if (response == 2) {
+			restartJob(clientUUID);
+		}
 	}
 }

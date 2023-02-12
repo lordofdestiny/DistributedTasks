@@ -52,4 +52,6 @@ public interface IWorkerServer extends IPingable, Remote {
 
 	FileUploadHandle scheduleRunnableJobShard(JobAuthenticator auth, String name, Runnable task)
 			throws RemoteException;
+
+	int killJobsAssociatedWithClient(UUID clientUUID) throws RemoteException;
 }

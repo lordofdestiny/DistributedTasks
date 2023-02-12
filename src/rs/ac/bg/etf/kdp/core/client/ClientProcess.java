@@ -20,8 +20,8 @@ import java.util.function.Consumer;
 import rs.ac.bg.etf.kdp.core.ConnectionMonitor;
 import rs.ac.bg.etf.kdp.core.IClientServer;
 import rs.ac.bg.etf.kdp.core.IServerClient;
-import rs.ac.bg.etf.kdp.core.IServerClient.ResultRequestCode;
 import rs.ac.bg.etf.kdp.core.IServerClient.MultipleJobsException;
+import rs.ac.bg.etf.kdp.core.IServerClient.ResultRequestCode;
 import rs.ac.bg.etf.kdp.core.IServerClient.UnregisteredClientException;
 import rs.ac.bg.etf.kdp.utils.ConnectionInfo;
 import rs.ac.bg.etf.kdp.utils.ConnectionListener;
@@ -105,9 +105,23 @@ public class ClientProcess implements IClientServer, Unreferenced {
 		if (failedToStartCallback != null) {
 			failCounters.compute(jobUUID, (t, v) -> v == null ? 0 : v + 1);
 			if (failCounters.get(jobUUID) >= 5) {
-
+				System.err.println(String.format("Job %s will not be started anymore.", jobUUID));
 			}
 			failedToStartCallback.accept(String.format("Job % failed to start 5 times.", jobUUID));
+		}
+	}
+	
+	private Consumer<JobTreeNode> failedJobCallback = null;
+
+	public void setJobFailedListener(Consumer<JobTreeNode> cb) {
+		failedJobCallback = Objects.requireNonNull(cb);
+	}
+
+	@Override
+	public void notifyJobFailed(JobTreeNode desc) throws RemoteException {
+		// No clue if something else is necessary
+		if (failedJobCallback != null) {
+			failedJobCallback.accept(desc);
 		}
 	}
 
@@ -122,7 +136,6 @@ public class ClientProcess implements IClientServer, Unreferenced {
 
 	public void setJobResultsTransferListener(JobResultsTransferListener cb) {
 		this.jobResultsTransferCallback = cb;
-
 	}
 
 	@Override
@@ -164,26 +177,20 @@ public class ClientProcess implements IClientServer, Unreferenced {
 		return new FileUploadHandle(downloader, token.deadline());
 	}
 
-	private Consumer<JobTreeNode> failedJobCallback = null;
-
-	public void setJobFailedListener(Consumer<JobTreeNode> cb) {
-		failedJobCallback = Objects.requireNonNull(cb);
-	}
-
-	@Override
-	public void notifyJobFailed(JobTreeNode desc) throws RemoteException {
-		// No clue if something else is necessary
-		if (failedJobCallback != null) {
-			failedJobCallback.accept(desc);
-		}
-	}
-
 	public ResultRequestCode requestResults() {
 		try {
 			return server.requestResults(uuid);
 		} catch (RemoteException e) {
 			System.err.println("Failed to request results from server!");
 			return ResultRequestCode.UNKNOWN;
+		}
+	}
+	
+	public void respondToJobFailure(int response) {
+		try {			
+			server.respondToJobFailed(uuid, response);
+		}catch(RemoteException e) {
+			System.err.println("Failed to reply to server!");
 		}
 	}
 

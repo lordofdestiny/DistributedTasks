@@ -31,16 +31,10 @@ public class TestLinda {
 	}
 
 	public static void recursive() {
-		final var fmt = new String[] { "counter", null };
+		final var fmt = new String[] { "flag", null };
 		ll.in(fmt);
-		int val = Integer.parseInt(fmt[1]);
-		System.out.println("I CALL " + val);
-		if (val < 2) {
-			Object[] ca = {};
-			Object[] ma = {};
-			ll.eval(TestLinda.class.getCanonicalName(), ca, "recursive", ma);
-			ll.out(new String[] { "counter", "" + (val + 1) });
-		}
+		ll.out(new String[] { "flag", "1" });
+		throwRTE();
 	}
 
 	public static void main(String[] args) {
@@ -51,8 +45,10 @@ public class TestLinda {
 		ll.eval(TestLinda.class.getCanonicalName(), ca, "threadC", ma);
 		ll.eval("Hello", (Runnable & Serializable) () -> System.out.println("Hello world!!!"));
 //		ll.eval(TestLinda.class.getCanonicalName(), ca, "throwRTE", ma);
-		ll.out(new String[] { "counter", "0" });
-		ll.eval(TestLinda.class.getCanonicalName(), ca, "recursive", ma);
+		if (!ll.rdp(new String[] { "flag", "1" })) {
+			ll.out(new String[] { "flag", "0" });
+			ll.eval(TestLinda.class.getCanonicalName(), ca, "recursive", ma);
+		}
 		try {
 			String hello = "Hello world";
 			FileWriter fw = new FileWriter(new File("Output.txt"));

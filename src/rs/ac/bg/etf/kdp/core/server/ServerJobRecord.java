@@ -9,7 +9,6 @@ import java.util.ArrayDeque;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -101,7 +100,6 @@ abstract class ServerJobRecord {
 
 		while (!stack.isEmpty()) {
 			final var current = stack.pop();
-
 			final var reversed = current.children.listIterator(current.children.size());
 			while (reversed.hasPrevious()) {
 				final var child = reversed.previous();
@@ -128,6 +126,10 @@ abstract class ServerJobRecord {
 
 	protected void setResultFilesGenerated() {
 		resultGenerated = true;
+	}
+
+	protected void setResultFilesGenerated(boolean value) {
+		resultGenerated = value;
 	}
 
 	protected boolean resultFilesGenerated() {
